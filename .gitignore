@@ -1,0 +1,12 @@
+# Generated at build time — do not commit
+reca.bin
+reca.sym
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Temporary files
+*.tmp
+*.bak

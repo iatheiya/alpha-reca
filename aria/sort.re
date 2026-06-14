@@ -1,0 +1,43 @@
+============================================================
+//aria/sort.re — In-place insertion sort on a Lux-word array
+Leaf, Voca/Redi via RA_LINK.
+DEPENDENCY: aspects.re, core/constants.re (C_0, C_1)//
+============================================================
+
+NEW RA_SORT_BASE
+NEW RA_SORT_LEN
+NEW RA_SORT_I
+NEW RA_SORT_J
+NEW RA_SORT_KEY
+NEW RA_SORT_TMP
+NEW RA_SORT_TMP2
+NEW RA_SORT_ADDR
+
+NOLINK
+ITO SORT_ENTRY   Move      El1=C_1          Exit=RA_SORT_I
+JEQ SORT_OUTER RA_SORT_I RA_SORT_LEN SORT_DONE
+ITO SORT_LOADKEY Add       El1=RA_SORT_BASE El2=RA_SORT_I    Exit=RA_SORT_ADDR
+ITO SORT_READKEY Read   El1=RA_SORT_ADDR Exit=RA_SORT_KEY
+ITO SORT_INITJ   Sub       El1=RA_SORT_I    El2=C_1          Exit=RA_SORT_J
+
+ITO SORT_INNER   Less El1=RA_SORT_J    El2=C_0          Exit=RA_FLAG
+ITO SORT_INNERJ  JumpIf    El1=RA_FLAG      Exit=SORT_INNER_DONE
+ITO SORT_LOAJ    Add       El1=RA_SORT_BASE El2=RA_SORT_J    Exit=RA_SORT_ADDR
+ITO SORT_READJ   Read   El1=RA_SORT_ADDR Exit=RA_SORT_TMP
+ITO SORT_CMP     Less El1=RA_SORT_KEY  El2=RA_SORT_TMP  Exit=RA_FLAG
+ITO SORT_CMPJ    JumpIf    El1=RA_FLAG      Exit=SORT_INNER_BODY
+ITO SORT_CMPNO   Jump      Exit=SORT_INNER_DONE
+
+ITO SORT_INNER_BODY Add    El1=RA_SORT_J    El2=C_1          Exit=RA_SORT_TMP2
+ITO SORT_STOREUP    Add    El1=RA_SORT_BASE El2=RA_SORT_TMP2 Exit=RA_SORT_ADDR
+ITO SORT_WRITE      Write El1=RA_SORT_ADDR El2=RA_SORT_TMP
+ITO SORT_DECJ       Sub    El1=RA_SORT_J    El2=C_1          Exit=RA_SORT_J
+ITO SORT_INNERLB    Jump   Exit=SORT_INNER
+
+ITO SORT_INNER_DONE Add    El1=RA_SORT_J    El2=C_1          Exit=RA_SORT_TMP2
+ITO SORT_FINAL_ADDR Add    El1=RA_SORT_BASE El2=RA_SORT_TMP2 Exit=RA_SORT_ADDR
+ITO SORT_WRITEKEY   Write El1=RA_SORT_ADDR El2=RA_SORT_KEY
+ITO SORT_OUTER_NEXT Add    El1=RA_SORT_I    El2=C_1          Exit=RA_SORT_I
+ITO SORT_OUTERLB    Jump   Exit=SORT_OUTER
+
+RREDI SORT_DONE
