@@ -4,11 +4,11 @@
 aether[i] == 0 → absence. aether[i] != 0 → something is here.
 
 ── Lux model ────────────────────────────────────────────────────────────────
-Data lux:   [lux, l0..ln]    — lux + n lumens, +1 natural absence lux
+Data lux:   [lux, l0..ln]    — lux + n lumina, +1 natural absence lux
 Instr lux:  [word, op, e1, e2, exit, next, pad]  — 7 physical luces (ITO_SIZE)
 Voca/Redi calling convention: ITO slot layout = compact fixed-slot.
 
-There are NO separate lumen blocks. Lumens are inline in the lux.
+There are NO separate lumen blocks. Lumina are inline in the lux.
 The 0 after the last lumen is automatic (bump zeroes aether) — not a field.
 
 ── Dynamic lumen addition ────────────────────────────────────────────────────
@@ -17,20 +17,20 @@ Requires src was allocated with enough space (prepass guarantees this for
 bootstrap; runtime callers must pre-allocate). See ALLOC_LUX_N for runtime.
 
 ── Calling convention ────────────────────────────────────────────────────────
-RVOCA to call, RREDI to return. The call stack (RA_SP) is automatic —
+"RVOCA" to call, "RREDI" to return. The call stack (RA_SP) is automatic —
 Voca/Redi(RA_LINK) push/pop the return address, so nested calls work
 at any depth with no per-function bookkeeping.
 
-DEPENDENCY: aspects.re  constants.re  regs.re  layout.re
+DEPENDENCY: aspects.re  constants.re  registers.re  layout.re
 
 NOTE: ALLOC_RAW is non-leaf (calls ALLOC_LUCES internally) so that
 watermark update logic lives in exactly one place (ALLOC_LUCES).//
 
-/── Kernel pointer luces ──────────────────────────────────────────────────────
-/These luces follow the double-deref pointer pattern:
-/  a[K_X] = K_X+1  (stable pointer to value lux)
-/  a[K_X+1] = actual value
-/Python freeze() initializes them. Reca Read/Write uses double-deref.
+── Kernel pointer luces ──────────────────────────────────────────────────────
+//These luces follow the double-deref pointer pattern:
+  a[K_X] = K_X+1  (stable pointer to value lux)
+  a[K_X+1] = actual value
+Python freeze() initializes them. Reca Read/Write uses double-deref.//
 NEW K_CURSOR     /bump allocator cursor pointer
 NEW K_WATERMARK  /high-water mark pointer
 NEW K_TRACE_POS  /trace position pointer (0 = tracing off)
@@ -41,9 +41,9 @@ NEW K_FLUX_FREELIST /head of free-list for flux zone; double-deref; 0 = empty li
 NEW RA_FLUX_BOTTOM /= FLUX_BOTTOM constant; written at freeze time
 NEW RA_FLUX_TOP    /= FLUX_TOP constant; written at freeze time
 
-/── Overflow chain ───────────────────────────────────────────────────────────
-/OVERFLOW_REL: special rel value marking a chain link between lux luces.
-/When ADD_LUMEN finds rel==OVERFLOW_REL: follow tgt to overflow lux (alloc if tgt==0).
+── Overflow chain ───────────────────────────────────────────────────────────
+//OVERFLOW_REL: special rel value marking a chain link between lux luces.
+When ADD_LUMEN finds rel==OVERFLOW_REL: follow tgt to overflow lux (alloc if tgt==0).//
 NEW OVERFLOW_REL
 
 
@@ -51,11 +51,18 @@ NEW RA_ALLOC_TMP
 NEW RA_ALLOC_TMP2
 NEW RA_ALLOC_TMP3
 NEW RA_ALLOC_RESULT
+NEWREF RA_ALLOC_RESULT_REF RA_ALLOC_RESULT  /word = addr(RA_ALLOC_RESULT); for WAVE El1/Exit/
 NEW RA_ALLOC_COUNT
+NEWREF RA_ALLOC_COUNT_REF  RA_ALLOC_COUNT   /word = addr(RA_ALLOC_COUNT); for WAVE El1/Exit/
 
 NEW RA_LM_SRC          /ADD_LUMEN / REMOVE_LUMEN: source lux addr/
 NEW RA_LM_REL          /ADD_LUMEN / REMOVE_LUMEN: relation addr (0 = untyped)/
 NEW RA_LM_EXIT          /ADD_LUMEN / REMOVE_LUMEN: target lux addr/
+NEW RA_LM_OFFSET       /ADD_LUMEN / REMOVE_LUMEN: offset from src to first lumen-pair slot (1=Data lux, ITO_SIZE=ITO lux)/
+
+NEW RA_NL_PREV         /LINK_NEXT: address of the previous ITO lux (0 = none, no-op)/
+NEW RA_NL_NEXT         /LINK_NEXT: address of the next ITO lux to link to/
+NEW RA_NL_TMP          /LINK_NEXT: scratch/
 
 ── ALLOC_LUCES: bump-allocate RA_ALLOC_COUNT luces ──────────────────────────
 //OUT: RA_ALLOC_RESULT = base address.
@@ -85,7 +92,6 @@ NEW RA_FX_TMP    /scratch for ALLOC_FLUX_ZONE
 NEW RA_FX_TMP2   /scratch
 NEW RA_FLUX_PREV   /previous free-list lux during scan
 NEW RA_FLUX_PREV2  /scratch for prev+1 ptr
-NOLINK
 NOLINK
     /Check free-list: scan for block of matching size
     ITO ALLOC_FLUX_ZONE Read  El1=K_FLUX_FREELIST  Exit=RA_FX_TMP   /head of list
@@ -141,7 +147,7 @@ NOLINK
     ITO FH_WHEAD     Write El1=K_FLUX_FREELIST  El2=RA_ALLOC_RESULT
 
 ── ALLOC_LUX: allocate minimal data lux [lux | 0] = 2 physical luces ───────
-//OUT: RA_ALLOC_RESULT = lux addr. Caller writes lux at aether[result]. Non-leaf.//
+/OUT: RA_ALLOC_RESULT = lux addr. Caller writes lux at aether[result]. Non-leaf.
 NOLINK
     ITO ALLOC_LUX  Move  El1=C_2      Exit=RA_ALLOC_COUNT
     RVOCA ALX_CALL ALLOC_LUCES
@@ -159,20 +165,20 @@ NOLINK
     ITO ALLOC_ITO  Move  El1=ITO_SIZE Exit=RA_ALLOC_COUNT
     RVOCA AI_CALL  ALLOC_LUCES
 
-── ALLOC_LUX_N: allocate data lux with RA_AN_NLUMENS lumens ───────────────
-//IN:  RA_AN_NLUMENS = number of lumens (n)
+── ALLOC_LUX_N: allocate data lux with RA_AN_NLUMINA lumina ───────────────
+//IN:  RA_AN_NLUMINA = number of lumina (n)
 Physical size = 1 (word) + 2*n (lumen pairs) + 2 (overflow sentinel) = 2*n + 3
 Last two slots = [OVERFLOW_REL, 0] — overflow chain sentinel.
 ADD_LUMEN treats OVERFLOW_REL as overflow link, not absence.
 OUT: RA_ALLOC_RESULT = lux addr. Non-leaf.//
-NEW RA_AN_NLUMENS      /input: number of lumens needed
+NEW RA_AN_NLUMINA      /input: number of lumina needed
 NOLINK
-    ITO ALLOC_LUX_N  Add     El1=RA_AN_NLUMENS El2=RA_AN_NLUMENS Exit=RA_ALLOC_COUNT  /2*n
+    ITO ALLOC_LUX_N  Add     El1=RA_AN_NLUMINA El2=RA_AN_NLUMINA Exit=RA_ALLOC_COUNT  /2*n
     ITO ANN_SZ       Add     El1=RA_ALLOC_COUNT El2=C_3 Exit=RA_ALLOC_COUNT  /+1 word +2 overflow
     RVOCA ANN_CALL     ALLOC_LUCES
     /Write OVERFLOW_REL sentinel at slot [1 + 2*n] (after all lumen pairs)
-    ITO ANN_OVPOS    Add     El1=RA_ALLOC_RESULT El2=RA_AN_NLUMENS Exit=RA_ALLOC_TMP
-    ITO ANN_OVPOS2   Add     El1=RA_ALLOC_TMP   El2=RA_AN_NLUMENS Exit=RA_ALLOC_TMP
+    ITO ANN_OVPOS    Add     El1=RA_ALLOC_RESULT El2=RA_AN_NLUMINA Exit=RA_ALLOC_TMP
+    ITO ANN_OVPOS2   Add     El1=RA_ALLOC_TMP   El2=RA_AN_NLUMINA Exit=RA_ALLOC_TMP
     ITO ANN_OVPOS3   Add     El1=RA_ALLOC_TMP   El2=C_1           Exit=RA_ALLOC_TMP
     ITO ANN_OVWR     Write   El1=RA_ALLOC_TMP   El2=OVERFLOW_REL
     /slot [1 + 2*n + 1] stays 0 (bump zeroes) = no overflow yet
@@ -181,8 +187,10 @@ NOLINK
 //Lumen model: each lumen = 2 luces [rel, exit]. Absence = rel==0.
 Overflow: rel==OVERFLOW_REL means chain link. overflow_lux==0 → allocate new and link.
 overflow_lux!=0 → follow to existing overflow lux and continue scanning there.
-Walks pairs from pos 1. At OVERFLOW_REL: follow chain (create if needed).
+Walks pairs from pos RA_LM_OFFSET. At OVERFLOW_REL: follow chain (create if needed).
 REQUIRES: lux allocated with ALLOC_LUX_N or equivalent with overflow sentinel.
+REQUIRES: caller sets RA_LM_OFFSET = offset from src to first lumen-pair slot
+(1 for a Data lux, ITO_SIZE for an ITO lux — see RA_LM_OFFSET declaration below).
 Non-leaf.//
 NEW RA_AL_POS      /current scan position (points to rel lux of each pair)/
 NEW RA_AL_OV_POS   /position of OVERFLOW_REL slot (for writing new overflow addr)/
@@ -190,8 +198,8 @@ NOLINK
     /Guard: skip if src == 0
     JZ AL_SRCCK RA_LM_SRC AL_DONE
 
-    /Start scan from pos 1 (skip word at pos 0)
-    ITO ADD_LUMEN    Add       El1=RA_LM_SRC El2=C_1 Exit=RA_AL_POS
+    /Start scan from pos RA_LM_OFFSET (skip lux's own header fields)
+    ITO ADD_LUMEN    Add       El1=RA_LM_SRC El2=RA_LM_OFFSET Exit=RA_AL_POS
 
     /Loop: read rel at current pos
     NOLINK
@@ -214,9 +222,9 @@ NOLINK
     ITO AL_OV_CONT   Add       El1=RA_ALLOC_TMP El2=C_1 Exit=RA_AL_POS
     ITO AL_OV_JMP    Jump      Exit=AL_LOOP
 
-    /overflow_lux==0: allocate new lux with room for 4 lumens + sentinel
+    /overflow_lux==0: allocate new lux with room for 4 lumina + sentinel
     NOLINK
-    ITO AL_OV_ALLOC  Move      El1=C_4    Exit=RA_AN_NLUMENS
+    ITO AL_OV_ALLOC  Move      El1=C_4    Exit=RA_AN_NLUMINA
     RVOCA AL_OV_AN     ALLOC_LUX_N
     /Link: write new overflow lux addr into the overflow slot
     ITO AL_OV_LINK   Write     El1=RA_AL_OV_POS El2=RA_ALLOC_RESULT
@@ -236,6 +244,8 @@ NOLINK
 //Finds first pair where rel==RA_LM_REL AND exit==RA_LM_EXIT.
 Shifts remaining pairs left by 2 luces. Zeroes the last 2 luces.
 Follows overflow chain (OVERFLOW_REL) transparently.
+REQUIRES: caller sets RA_LM_OFFSET = offset from src to first lumen-pair slot
+(1 for a Data lux, ITO_SIZE for an ITO lux — see RA_LM_OFFSET declaration below).
 Non-leaf.//
 NEW RA_RL_POS      /current scan position (rel lux of pair)
 NEW RA_RL_NEXT     /source position during shift
@@ -245,8 +255,8 @@ NOLINK
     /Guard: skip if src == 0
     JZ REMOVE_LUMEN RA_LM_SRC RL_DONE
 
-    /Start scan from pos 1 (rel lux of first pair)
-    ITO RL_INIT     Add       El1=RA_LM_SRC El2=C_1 Exit=RA_RL_POS
+    /Start scan from pos RA_LM_OFFSET (rel lux of first pair)
+    ITO RL_INIT     Add       El1=RA_LM_SRC El2=RA_LM_OFFSET Exit=RA_RL_POS
 
     /Find pair where rel==RA_LM_REL AND exit==RA_LM_EXIT
     NOLINK
@@ -296,6 +306,24 @@ NOLINK
     ITO RL_ZERO3    Write  El1=RA_RL_NEXT El2=C_0
     NOLINK
     RREDI RL_DONE
+── LINK_NEXT: write RA_NL_NEXT into SLOT_NEXT of RA_NL_PREV — only if not adjacent ──
+//If RA_NL_PREV==0: no previous instruction in the autolink chain, nothing to do.
+If RA_NL_NEXT == RA_NL_PREV + ITO_SIZE: physically adjacent in Aether — leave
+SLOT_NEXT at 0 (already 0 from bump-allocation), so the interpreter's implicit
+fall-through (pc+ITO_SIZE) applies with zero runtime cost. This is the common
+case for ordinary sequential code. Otherwise: write the explicit link.
+Shared by saku.re's native LOAD_MAIN dispatch and macros.re's AUTOLINK —
+one rule, not duplicated formulas. Leaf.//
+NOLINK
+    JZ LN_PVCK RA_NL_PREV LN_DONE
+    ITO LINK_NEXT   Add   El1=RA_NL_PREV El2=ITO_SIZE   Exit=RA_NL_TMP
+    ITO LN_EQ       Equal El1=RA_NL_TMP  El2=RA_NL_NEXT  Exit=RA_NL_TMP
+    JZ LN_ADJCK RA_NL_TMP LN_NSLOT
+    RREDI LN_DONE
+    NOLINK
+    ITO LN_NSLOT    Add   El1=RA_NL_PREV El2=SLOT_NEXT   Exit=RA_NL_TMP
+    ITO LN_NW       Write El1=RA_NL_TMP  El2=RA_NL_NEXT
+    RREDI LN_WRET
 ── ALLOC_RAW: bump-allocate RA_ALLOC_COUNT luces, zeroed ────────────────────
 //Calls ALLOC_LUCES (cursor + watermark), then zeroes the region. Non-leaf.
 OUT: RA_ALLOC_RESULT = base address.//

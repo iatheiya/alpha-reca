@@ -1,14 +1,13 @@
-============================================================
+//============================================================
 //aria/ascii.re — ASCII character constants
 
-Reca stores characters as i64 (low 8 bits = the byte).
-@_sys/sys_write reads the low byte of each Lux word.
+//Reca stores characters as i64 (low 8 bits = the byte).
+SYS_WRITE reads the low byte of each Lux word.
 These constants give human names to the values used in
 yaku.re and other Reca programs.
 
 The LC_* prefix has been removed. Names are canonical.
 All values are standard 7-bit ASCII (0–127).//
-============================================================
 
 ── Control characters ────────────────────────────────────────
 NEWSET NUL 0             /null terminator — marks end of byte chains
@@ -46,6 +45,7 @@ NEWSET EQUALS 61         /=/
 NEWSET BACKSLASH 92      /backslash char (92)/
 
 NEWSET UNDERSCORE 95     /_/
+NEWSET ASCII_PIPE 124    /|/
 
 NEWSET QMARK 63          /?/
 
@@ -123,9 +123,11 @@ NEWSET ASCII_W 87
 NEWSET ASCII_X 88
 
 /── Lowercase letters (suffix 'l' = lowercase) ────────────────/
-/Used by PS_DEF_BUILD_GRAPH placeholder dispatch/
+NEWSET ASCII_cl 99      /'c'/
 NEWSET ASCII_dl 100     /'d'/
 NEWSET ASCII_fl 102     /'f'/
+NEWSET ASCII_hl 104     /'h'/
+NEWSET ASCII_il 105     /'i'/
 NEWSET ASCII_ll 108     /'l'/
 NEWSET ASCII_nl 110     /'n'/
 NEWSET ASCII_pl 112     /'p'/
@@ -134,12 +136,5 @@ NEWSET ASCII_tl 116     /'t'/
 NEWSET ASCII_vl 118     /'v'/
 NEWSET ASCII_xl 120     /'x'/
 
-/── Digit ASCII values ─────────────────────────────────────────/
+/── Single digit ASCII values ──────────────────────────────────/
 NEWSET ASCII_1 49       /'1'/
-NEWSET ASCII_2 50       /'2'/
-NEWSET ASCII_3 51       /'3'/
-NEWSET ASCII_8 56       /'8'/
-NEWSET ASCII_c 99       /'c'/
-NEWSET ASCII_h 104      /'h'/
-NEWSET ASCII_n 110      /'n'/
-NEWSET ASCII_i 105      /'i'/

@@ -8,7 +8,7 @@ Lumen = addr  — one connection (positions 1..n of a data lux)
 Data lux:       [word, rel0, exit0, rel1, exit1, ..., 0]
 word at pos 0, lumen pairs from pos 1 onward, 0-terminated.
 
-ITO lux (compact fixed-slot layout, 7 physical luces):
+"ITO" lux (compact fixed-slot layout, 7 physical luces):
 pos 0 = word  = self-ref (aether[addr] = addr)
 pos 1 = op    = primitive addr (SLOT_OP)
 pos 2 = e1    = first operand   (SLOT_E1)
@@ -43,9 +43,9 @@ NEWSET C_8 8
 NEWSET C_9 9
 
 NEWSET C_10 10
-NEWSET C_13 13
 NEWSET C_11 11
 NEWSET C_12 12
+NEWSET C_13 13
 NEWSET C_14 14
 NEWSET C_15 15
 NEWSET C_16 16
@@ -53,12 +53,7 @@ NEWSET C_17 17
 NEWSET C_18 18
 NEWSET C_19 19
 
-//removed unused
-was SET C_18 18
-
-removed unused
-was SET C_20 20//
-
+NEWREF C_7_REF C_7    /word = addr(C_7); for WAVE El1= when value 7 is needed. Placed after the C_N sequence so it doesn't break the addr(C_N) = addr(C_0) + 2*N formula./
 
 NEWSET C_32 32
 
@@ -82,8 +77,7 @@ NEWSET C_512 512
 
 NEWSET C_1024 1024
 
-//removed unused
-was SET C_2048 2048//
+//removed unused: C_2048//
 
 NEWSET C_5381 5381
 

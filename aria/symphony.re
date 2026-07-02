@@ -1,8 +1,8 @@
-//aether.re — Lumen iteration subroutines
+//symphony.re — Lumen iteration subroutines
 
 Lux   = u64 at position 0 of any lux.
 Lumen = (rel, exit) pair at positions 1..2n of a data lux.
-aether[lux + 1] = rel_addr of first lumen  (or 0 = no lumens)
+aether[lux + 1] = rel_addr of first lumen  (or 0 = no lumina)
 aether[lux + 2] = exit_addr of first lumen
 aether[lux + 3] = rel_addr of second lumen (or 0 = end)
 //...//
@@ -27,9 +27,9 @@ SR_GLR       IN: RA_SR_LUMEN            → RA_SR_REL, RA_SR_OUT = rel
 SR_GLE       IN: RA_SR_LUMEN            → RA_SR_OUT = exit (pos+1)
 SR_GLX       IN: RA_SR_LUMEN            → RA_SR_LUMEN += 2, RA_SR_REL = next rel
 SR_WALK_ONE  IN: RA_SR_LUX, RA_SR_REL  → RA_SR_OUT = exit where rel matches, or 0
-SR_COUNT_LM  IN: RA_SR_LUX              → RA_SR_OUT = number of lumens
+SR_COUNT_LM  IN: RA_SR_LUX              → RA_SR_OUT = number of lumina
 
-DEPENDENCY: aspects.re  constants.re  regs.re
+DEPENDENCY: aspects.re  constants.re  registers.re
 
 NEW RA_SR_LUX    /input: lux address
 NEW RA_SR_POS    /input/output: current position (points to rel lux of a pair)
@@ -47,7 +47,7 @@ RREDI SR_LUX_OF2
 ── SR_FIRST_LM: first lumen pair of RA_SR_LUX ───────────────────────────────
 //Sets RA_SR_POS = lux+offset. Reads rel → RA_SR_REL. Reads exit → RA_SR_OUT.
 If OVERFLOW_REL encountered: automatically follows chain (jumps to overflow lux pos 1).
-If no lumens (or chain end): RA_SR_REL = 0, RA_SR_OUT = 0. Leaf for normal case.//
+If no lumina (or chain end): RA_SR_REL = 0, RA_SR_OUT = 0. Leaf for normal case.//
 NOLINK
 ITO SR_FIRST_LM  Add     El1=RA_SR_LUX El2=RA_SR_OFFSET Exit=RA_SR_POS
 ITO SR_FL_REL    Read El1=RA_SR_POS           Exit=RA_SR_REL
@@ -62,10 +62,11 @@ ITO SR_FL_OVERFLOW Add   El1=RA_SR_POS El2=C_1  Exit=RA_SR_LUMEN
 ITO SR_FL_OVRD   Read El1=RA_SR_LUMEN          Exit=RA_SR_REL   /read overflow lux addr
 JZ SR_FL_OVZ RA_SR_REL SR_FL_NOMATCH         /exit==0 → no overflow → end
 /Jump into overflow lux from pos 1
-ITO SR_FL_OVCONT Add   El1=RA_SR_REL El2=C_1  Exit=RA_SR_POS
-ITO SR_FL_OVRRD  Read El1=RA_SR_POS           Exit=RA_SR_REL
-ITO SR_FL_OVTP   Add   El1=RA_SR_POS El2=C_1  Exit=RA_SR_LUMEN
-ITO SR_FL_OVTGT  Read El1=RA_SR_LUMEN         Exit=RA_SR_OUT
+CHAIN SR_FL_OVCONT
+    Add   El1=RA_SR_REL El2=C_1  Exit=RA_SR_POS
+    Read  El1=RA_SR_POS           Exit=RA_SR_REL
+    Add   El1=RA_SR_POS El2=C_1  Exit=RA_SR_LUMEN
+    Read  El1=RA_SR_LUMEN         Exit=RA_SR_OUT
 RREDI SR_FL_OVRET
 NOLINK
 CLEAR SR_FL_NOMATCH RA_SR_REL
@@ -88,10 +89,11 @@ NOLINK
 ITO SR_NL_OVERFLOW Add  El1=RA_SR_POS El2=C_1  Exit=RA_SR_LUMEN
 ITO SR_NL_OVRD   Read El1=RA_SR_LUMEN          Exit=RA_SR_REL   /overflow lux addr
 JZ SR_NL_OVZ RA_SR_REL SR_NL_END              /exit==0 → end of chain
-ITO SR_NL_OVCONT Add   El1=RA_SR_REL El2=C_1  Exit=RA_SR_POS   /pos = overflow+1
-ITO SR_NL_OVRRD  Read El1=RA_SR_POS           Exit=RA_SR_REL
-ITO SR_NL_OVTP   Add   El1=RA_SR_POS El2=C_1  Exit=RA_SR_LUMEN
-ITO SR_NL_OVTGT  Read El1=RA_SR_LUMEN         Exit=RA_SR_OUT
+CHAIN SR_NL_OVCONT
+    Add   El1=RA_SR_REL El2=C_1  Exit=RA_SR_POS
+    Read  El1=RA_SR_POS           Exit=RA_SR_REL
+    Add   El1=RA_SR_POS El2=C_1  Exit=RA_SR_LUMEN
+    Read  El1=RA_SR_LUMEN         Exit=RA_SR_OUT
 RREDI SR_NL_OVRET
 NOLINK
 CLEAR SR_NL_END   RA_SR_REL
@@ -181,7 +183,7 @@ NOLINK
 CLEAR SR_WO_MISS RA_SR_OUT
 RREDI SR_WO_MRET_r
 
-── SR_COUNT_LM: count lumens of lux RA_SR_LUX → RA_SR_OUT ─────────────────
+── SR_COUNT_LM: count lumina of lux RA_SR_LUX → RA_SR_OUT ─────────────────
 /Walks pairs from pos 1, counts until rel == 0. Follows OVERFLOW_REL chain. Non-leaf.
 NEW RA_SR_CNT
 NOLINK

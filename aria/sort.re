@@ -1,8 +1,7 @@
-============================================================
+//============================================================
 //aria/sort.re — In-place insertion sort on a Lux-word array
-Leaf, Voca/Redi via RA_LINK.
-DEPENDENCY: aspects.re, core/constants.re (C_0, C_1)//
-============================================================
+//Leaf, Voca/Redi via RA_LINK.
+//DEPENDENCY: aspects.re, core/constants.re (C_0, C_1)//
 
 NEW RA_SORT_BASE
 NEW RA_SORT_LEN

@@ -3,7 +3,7 @@
 //
 //NOTE: RCALL_AT calls in this file are builder-class macros — they are
 //wired by LOAD_MAIN (see BUGS.md Pattern N). Until self-hosting is reached,
-//the compiler entry P0_NID produces 0 bytes of output.
+//the compiler entry P0_NID produces 0 bytes of output.//
 ============================================================
 
 ── COMPILER RELATIONS ────────────────────────────────────────
@@ -11,95 +11,95 @@ ForType:    Yaku_X --ForType--> AspectLux  (maps op → rule)
 Terminates: Yaku_X --Terminates--> Yaku    (marks terminator rules)
 
 ── ALU RULES ────────────────────────────────────────────────
-YAKU_NEXO_ARITH Add
+NEXO Add HasArithResult
     {result} = add i{XLEN} {v1}, {v2}
     store i{XLEN} {result}, ptr {ptr_tgt}
-YAKU_NEXO_ARITH Sub
+NEXO Sub HasArithResult
     {result} = sub i{XLEN} {v1}, {v2}
     store i{XLEN} {result}, ptr {ptr_tgt}
-YAKU_NEXO_ARITH Mul
+NEXO Mul HasArithResult
     {result} = mul i{XLEN} {v1}, {v2}
     store i{XLEN} {result}, ptr {ptr_tgt}
-YAKU_NEXO_ARITH Div
+NEXO Div HasArithResult
     {result} = sdiv i{XLEN} {v1}, {v2}
     store i{XLEN} {result}, ptr {ptr_tgt}
-YAKU_NEXO_ARITH Rem
+NEXO Rem HasArithResult
     {result} = srem i{XLEN} {v1}, {v2}
     store i{XLEN} {result}, ptr {ptr_tgt}
-YAKU_NEXO_ARITH And
+NEXO And HasArithResult
     {result} = and i{XLEN} {v1}, {v2}
     store i{XLEN} {result}, ptr {ptr_tgt}
-YAKU_NEXO_ARITH Or
+NEXO Or HasArithResult
     {result} = or i{XLEN} {v1}, {v2}
     store i{XLEN} {result}, ptr {ptr_tgt}
-YAKU_NEXO_ARITH Xor
+NEXO Xor HasArithResult
     {result} = xor i{XLEN} {v1}, {v2}
     store i{XLEN} {result}, ptr {ptr_tgt}
-YAKU_NEXO_ARITH Not
+NEXO Not HasArithResult
     {result} = xor i{XLEN} {v1}, -1
     store i{XLEN} {result}, ptr {ptr_tgt}
-YAKU_NEXO_ARITH Left
+NEXO Left HasArithResult
     {result} = shl i{XLEN} {v1}, {v2}
     store i{XLEN} {result}, ptr {ptr_tgt}
-YAKU_NEXO_ARITH Right
+NEXO Right HasArithResult
     {result} = lshr i{XLEN} {v1}, {v2}
     store i{XLEN} {result}, ptr {ptr_tgt}
-YAKU_NEXO_ARITH ARight
+NEXO ARight HasArithResult
     {result} = ashr i{XLEN} {v1}, {v2}
     store i{XLEN} {result}, ptr {ptr_tgt}
-YAKU_NEXO_ARITH UDiv
+NEXO UDiv HasArithResult
     {result} = udiv i{XLEN} {v1}, {v2}
     store i{XLEN} {result}, ptr {ptr_tgt}
-YAKU_NEXO_ARITH URem
+NEXO URem HasArithResult
     {result} = urem i{XLEN} {v1}, {v2}
     store i{XLEN} {result}, ptr {ptr_tgt}
 
 ── COMPARISON RULES ─────────────────────────────────────────
-YAKU_NEXO_CMP Equal
+NEXO Equal HasCmpResult
     {fresh} = icmp eq i{XLEN} {v1}, {v2}
     {result} = zext i1 {fresh} to i{XLEN}
     store i{XLEN} {result}, ptr {ptr_tgt}
-YAKU_NEXO_CMP Less
+NEXO Less HasCmpResult
     {fresh} = icmp slt i{XLEN} {v1}, {v2}
     {result} = zext i1 {fresh} to i{XLEN}
     store i{XLEN} {result}, ptr {ptr_tgt}
-YAKU_NEXO_CMP ULess
+NEXO ULess HasCmpResult
     {fresh} = icmp ult i{XLEN} {v1}, {v2}
     {result} = zext i1 {fresh} to i{XLEN}
     store i{XLEN} {result}, ptr {ptr_tgt}
-YAKU_NEXO_CMP Greater
+NEXO Greater HasCmpResult
     {fresh} = icmp slt i{XLEN} {v2}, {v1}
     {result} = zext i1 {fresh} to i{XLEN}
     store i{XLEN} {result}, ptr {ptr_tgt}
-YAKU_NEXO_CMP UGreater
+NEXO UGreater HasCmpResult
     {fresh} = icmp ugt i{XLEN} {v1}, {v2}
     {result} = zext i1 {fresh} to i{XLEN}
     store i{XLEN} {result}, ptr {ptr_tgt}
-YAKU_NEXO_CMP NotEqual
+NEXO NotEqual HasCmpResult
     {fresh} = icmp ne i{XLEN} {v1}, {v2}
     {result} = zext i1 {fresh} to i{XLEN}
     store i{XLEN} {result}, ptr {ptr_tgt}
-YAKU_NEXO_CMP LessOrEqual
+NEXO LessOrEqual HasCmpResult
     {fresh} = icmp sle i{XLEN} {v1}, {v2}
     {result} = zext i1 {fresh} to i{XLEN}
     store i{XLEN} {result}, ptr {ptr_tgt}
-YAKU_NEXO_CMP ULessOrEqual
+NEXO ULessOrEqual HasCmpResult
     {fresh} = icmp ule i{XLEN} {v1}, {v2}
     {result} = zext i1 {fresh} to i{XLEN}
     store i{XLEN} {result}, ptr {ptr_tgt}
-YAKU_NEXO_CMP GreaterOrEqual
+NEXO GreaterOrEqual HasCmpResult
     {fresh} = icmp sge i{XLEN} {v1}, {v2}
     {result} = zext i1 {fresh} to i{XLEN}
     store i{XLEN} {result}, ptr {ptr_tgt}
-YAKU_NEXO_CMP UGreaterOrEqual
+NEXO UGreaterOrEqual HasCmpResult
     {fresh} = icmp uge i{XLEN} {v1}, {v2}
     {result} = zext i1 {fresh} to i{XLEN}
     store i{XLEN} {result}, ptr {ptr_tgt}
 
 ── CONTROL FLOW RULES (terminators) ─────────────────────────
-YAKU_NEXO_TERM End
+NEXO End Terminates
     ret i{XLEN} 0
-/LATENT ISSUE (see runtime/regs.re for the RCALL_AT counterpart): the
+/LATENT ISSUE (see runtime/registers.re for the RCALL_AT counterpart): the
 /interpreter's Redi/Voca also pop/push RA_LINK on the automatic call
 /stack (RA_SP), but these LLVM-IR templates don't yet emit that —
 /{RA_SP_ID}/{RA_FRAME_SIZE_ID} placeholder escapes don't exist in the
@@ -108,13 +108,13 @@ YAKU_NEXO_TERM End
 /compiler path is unwired (0 bytes output in both old and new builds).
 /Needs: add RA_SP_ID/RA_FRAME_SIZE_ID escapes, then update both
 /templates below to pop-before-jump (Redi) and push-before-jump (Voca).
-YAKU_NEXO_TERM Redi
+NEXO Redi Terminates
     {fresh} = load i{XLEN}, ptr getelementptr inbounds ([{TOTAL_SIZE} x i{XLEN}], ptr @heap, i{XLEN} 0, i{XLEN} {RA_LINK_ID})
     store i{XLEN} {fresh}, ptr @jr_slot
     br label %L_jrdispatch
-YAKU_NEXO_TERM Jump
+NEXO Jump Terminates
     br label {label_dest}
-YAKU_NEXO_TERM JumpIf
+NEXO JumpIf Terminates
     {fresh} = icmp ne i{XLEN} {v1}, 0
     br i1 {fresh}, label {label_dest}, label {label_next}
 
@@ -122,25 +122,23 @@ YAKU_NEXO_TERM JumpIf
 Uses {cmp} (escape 0x0A) = pending icmp i1 SSA index directly — no load, no icmp ne.
 This fuses Equal/Less/ULess/Greater + JumpIf into a single icmp + br.
 System: any op with HasCmpResult lumen auto-fuses with following JumpIf via this rule.//
-NEW JumpIfCmp
 NEWREF JumpIfCmp JumpIfCmp
-YAKU_NEXO_TERM JumpIfCmp
+NEXO JumpIfCmp Terminates
     br i1 %v{cmp}, label {label_dest}, label {label_next}
 
 //JumpIfNZ: used when E1 ptr_tgt matches last arithmetic op (HasArithResult).
 Uses {arith} (escape C_13) = i64 SSA result from Add/Sub/Mul/etc.
 Fuses arithmetic op + JumpIf into icmp ne + br without store+load.//
-NEW JumpIfNZ
 NEWREF JumpIfNZ JumpIfNZ
-YAKU_NEXO_TERM JumpIfNZ
+NEXO JumpIfNZ Terminates
     {fresh} = icmp ne i{XLEN} %v{arith}, 0
     br i1 {fresh}, label {label_dest}, label {label_next}
 
 /I.3: Yaku_JumpReg — indirect jump, does NOT set RA_LINK (pure goto).
-YAKU_NEXO_TERM JumpReg
+NEXO JumpReg Terminates
     store i{XLEN} {v1}, ptr @jr_slot
     br label %L_jrdispatch
-//Yaku_Call — sets RA_LINK = NXT_N (return address) then jumps.
+//Yaku_Call — sets RA_LINK = NXT_N (return address) then jumps.//
 NEWREF ForType
 NEWREF Terminates
 /HasCmpResult: marks ops that produce an i1 icmp result in {fresh}/RA_SSA_FR.
@@ -153,28 +151,30 @@ NEWREF HasCmpResult
 NEWREF HasArithResult
 /Matches interpreter _voca's RA_LINK assignment (the RA_SP push is NOT
 /yet emitted here — see the LATENT ISSUE note on the Redi template above).
-YAKU_NEXO_TERM Voca
+NEXO Voca Terminates
     store i{XLEN} {lnext_id}, ptr getelementptr inbounds ([{TOTAL_SIZE} x i{XLEN}], ptr @heap, i{XLEN} 0, i{XLEN} {RA_LINK_ID})
     store i{XLEN} {v1}, ptr @jr_slot
     br label %L_jrdispatch
 
 ── AETHER / REGISTER RULES ───────────────────────────────────
-YAKU_NEXO Move store i{XLEN} {v1}, ptr {ptr_tgt}
+NEXO Move
+    store i{XLEN} {v1}, ptr {ptr_tgt}
 
 //I.1: Yaku_Read handles Read + Load — both map to same IR.
-Uses DEF_RULE_ALIAS so both ops map to same rule. Template uses {fresh} for GEP.
-YAKU_NEXO_ALIAS Read
+Uses DEF_RULE_ALIAS so both ops map to same rule. Template uses {fresh} for GEP.//
+NEXO Read Terminates Write
     Load {fresh} = getelementptr [{TOTAL_SIZE} x i{XLEN}], ptr @heap, i{XLEN} 0, i{XLEN} {v1}
     {result} = load i{XLEN}, ptr {fresh}
     store i{XLEN} {result}, ptr {ptr_tgt}
 
 /I.2: Yaku_Write handles Write + Store — no target write needed.
-YAKU_NEXO_ALIAS Write
+NEXO Write Terminates Read
     Store {fresh} = getelementptr [{TOTAL_SIZE} x i{XLEN}], ptr @heap, i{XLEN} 0, i{XLEN} {v1}
     store i{XLEN} {v2}, ptr {fresh}
 
 ── SYSTEM INTERFACE RULES ────────────────────────────────────
-YAKU_NEXO Exire call i{XLEN} @_sys(i{XLEN} {v_x0}, i{XLEN} {v_x1}, i{XLEN} {v_x2}, i{XLEN} {v_x3}, i{XLEN} {v_x8})
+NEXO Exire
+    call i{XLEN} @_sys(i{XLEN} {v_x0}, i{XLEN} {v_x1}, i{XLEN} {v_x2}, i{XLEN} {v_x3}, i{XLEN} {v_x8})
 
 ============================================================
 ============================================================
@@ -188,7 +188,7 @@ to call PRELOAD_ARG and emit "load heap[SC_Ax_id]" in generated IR.
 Solution: SC_*_REF are read-only SETREF pointers whose word = SC_*_id always.
 EPL_SYS_*: Move El1=SC_A0_REF → RA_TMP  gives RA_TMP = SC_A0_id (stable).
 ETH_VX*:   Move El1=SC_A0_REF → RA_SSA_LID  for GET_SSA lookup.
-Both sides use the same stable ID, so PRELOAD_ARG and ETH_VX* agree on SSA.
+Both sides use the same stable ID, so PRELOAD_ARG and ETH_VX* agree on SSA.//
 NEWREF SC_A0_REF SC_A0
 NEWREF SC_A1_REF SC_A1
 NEWREF SC_A2_REF SC_A2
@@ -210,7 +210,6 @@ NEW P0_GEPGEP
 NEW P0_GEPGEPM
 NEW P0_GEPGEPJ
 NEW P0_GEPGEPMJ
-NEW EB_LABEL_DONE
 
 NEW ET_LOOP
 
@@ -355,7 +354,7 @@ NEW SF_JR_ARM_PFX
 /SF_JR_ARM_PFX value set by compiler_sf.re (generated by gen_compiler.py)
 NEWSET SF_JR_ARM_MID ", label %L"
 NEW SF_JR_TAIL
-//SF_JR_TAIL value set by compiler_sf.re (generated by gen_compiler.py)
+//SF_JR_TAIL value set by compiler_sf.re (generated by gen_compiler.py)//
 
 
 ── INIT_ARRAYS: allocate BFS queue, visited bitset, SSA direct-map array ─
@@ -368,26 +367,26 @@ No hash, no probe, no collision possible. O(1) guaranteed.
 
 ALLOC_RAW BFS_QUEUE_SIZE RA_BQ_BASE
 
-//VS words = (RA_NEXT_ID >> 6) + 1: dynamic, covers all allocated addresses.
+//VS words = (RA_NEXT_ID >> 6) + 1: dynamic, covers all allocated addresses.//
 Same pattern as INIT_SSA_A — size from actual alloc_ptr, not hardcoded constant.
 ITO INIT_VS_SHR  Right     El1=RA_NEXT_ID El2=C_6  Exit=RA_VS_WORDS
 ITO INIT_VS_INC  Add     El1=RA_VS_WORDS El2=C_1  Exit=RA_VS_WORDS
 ALLOC_RAW RA_VS_WORDS RA_VS_BASE
 
-//SSA direct-map: RA_NEXT_ID slots (one per allocated address).
+//SSA direct-map: RA_NEXT_ID slots (one per allocated address).//
 RA_NEXT_ID = alloc_ptr at P0_NID start — exact size, no overallocation.
 Generation 0 = empty slot. O(1) lookup guaranteed.
 ALLOC_RAW RA_NEXT_ID RA_SSA_BASE
 ITO INIT_SSA_GEN  Move El1=C_1 Exit=RA_SSA_GEN
 
-//Predecessor-count array removed — was used in BFS_ENQ but never consumed elsewhere.
+//Predecessor-count array removed — was used in BFS_ENQ but never consumed elsewhere.//
 
 ── INIT_RT: allocate rule-lookup table (C_1024 luces) ─
 Indexed by aspect Lux address. Max derived aspect addr ~628 (Store).
 C_1024 covers all current and future aspects with ample headroom.
 ALLOC_RAW C_1024 RA_RT_BASE
 
-//INIT_SC_ARGS removed — no runtime table needed
+//INIT_SC_ARGS removed — no runtime table needed//
 
 INIT_RO_TABLE removed — dispatch via JEQ chain in ET_LOAD (no runtime init needed)
 
@@ -402,35 +401,37 @@ RA_LINK    = return address
 OUT: RA_FLAG   = 0 if Lux was NOT visited (bit just set for first time)
 nonzero if Lux was ALREADY visited (bit was already set)
 The bit is ALWAYS set after this call.
-Clobbers: RA_TMP2 (lux addr), RA_TMP3 (bit mask), RA_TMP4 (word value)
+Clobbers: RA_TMP2 (lux addr), RA_TMP3 (bit mask), RA_TMP4 (word value)//
 
 ── VS_PREPARE: compute word addr + bit mask for RA_VS_ID ──────
 /OUT: RA_TMP2 = lux addr in VS array, RA_TMP3 = bit mask. Leaf.
-NOLINK
-ITO VS_PREPARE   Right   El1=RA_VS_ID    El2=C_6      Exit=RA_TMP2  /word_idx = id >> 6
-ITO VSP_BIT      And     El1=RA_VS_ID    El2=C_63     Exit=RA_TMP3  /bit_pos  = id & 63
-ITO VSP_MASK     Left    El1=C_1         El2=RA_TMP3  Exit=RA_TMP3  /bit_mask
-ITO VSP_ADDR     Add     El1=RA_VS_BASE  El2=RA_TMP2  Exit=RA_TMP2  /lux addr
+CHAIN
+    VS_PREPARE   Right   El1=RA_VS_ID    El2=C_6      Exit=RA_TMP2  /word_idx = id >> 6
+    VSP_BIT      And     El1=RA_VS_ID    El2=C_63     Exit=RA_TMP3  /bit_pos  = id & 63
+    VSP_MASK     Left    El1=C_1         El2=RA_TMP3  Exit=RA_TMP3  /bit_mask
+    VSP_ADDR     Add     El1=RA_VS_BASE  El2=RA_TMP2  Exit=RA_TMP2  /lux addr
 RREDI VSP_RET
 
 NOLINK
 RVOCA VS_TEST_SET VS_PREPARE
-ITO VTS_LOAD     Read El1=RA_TMP2                   Exit=RA_TMP4  /word value
-ITO VTS_TEST     And     El1=RA_TMP4     El2=RA_TMP3  Exit=RA_FLAG  /test bit
-ITO VTS_SET      Or      El1=RA_TMP4     El2=RA_TMP3  Exit=RA_TMP4  /set bit
-ITO VTS_STORE    Write El1=RA_TMP2    El2=RA_TMP4                  /write back
+CHAIN
+    VTS_LOAD     Read El1=RA_TMP2                   Exit=RA_TMP4  /word value
+    VTS_TEST     And     El1=RA_TMP4     El2=RA_TMP3  Exit=RA_FLAG  /test bit
+    VTS_SET      Or      El1=RA_TMP4     El2=RA_TMP3  Exit=RA_TMP4  /set bit
+    VTS_STORE    Write El1=RA_TMP2    El2=RA_TMP4                  /write back
 RREDI VTS_RET
 
 ── VS_CLEAR_BIT: clear one bit in the visited bitset ─────────
 //IN:  RA_VS_ID = Lux ID to clear. RA_LINK = return address.
 OUT: (none). Clobbers: RA_TMP2 (lux addr), RA_TMP3 (bit mask), RA_TMP4 (word).
-Symmetric to VS_TEST_SET. Leaf.
+Symmetric to VS_TEST_SET. Leaf.//
 NOLINK
 RVOCA VS_CLEAR_BIT VS_PREPARE
-ITO VCB_INV      Xor     El1=RA_TMP3     El2=C_NEG1   Exit=RA_TMP3  /inverted mask
-ITO VCB_LOAD     Read El1=RA_TMP2                   Exit=RA_TMP4  /word value
-ITO VCB_CLR      And     El1=RA_TMP4     El2=RA_TMP3  Exit=RA_TMP4  /clear bit
-ITO VCB_STORE    Write El1=RA_TMP2    El2=RA_TMP4                  /write back
+CHAIN
+    VCB_INV      Xor     El1=RA_TMP3     El2=C_NEG1   Exit=RA_TMP3  /inverted mask
+    VCB_LOAD     Read El1=RA_TMP2                   Exit=RA_TMP4  /word value
+    VCB_CLR      And     El1=RA_TMP4     El2=RA_TMP3  Exit=RA_TMP4  /clear bit
+    VCB_STORE    Write El1=RA_TMP2    El2=RA_TMP4                  /write back
 RREDI VCB_RET
 
 ── BQ_ADDR — compute circular queue lux address ─────────────
@@ -445,14 +446,15 @@ RREDI BQ_ADDR_RET
 NOLINK
 CLEAR VS_CLEAR RA_I
 JEQ   VS_CLR_LOOP  RA_I   RA_VS_WORDS     VS_CLR_DONE
-ITO VS_CLR_ST    Add     El1=RA_VS_BASE El2=RA_I  Exit=RA_TMP
-ITO VS_CLR_WR    Write El1=RA_TMP    El2=C_0
-ITO VS_CLR_INC   Add     El1=RA_I       El2=C_1   Exit=RA_I
-ITO VS_CLR_LB    Jump    Exit=VS_CLR_LOOP
+CHAIN
+    VS_CLR_ST    Add     El1=RA_VS_BASE El2=RA_I  Exit=RA_TMP
+    VS_CLR_WR    Write El1=RA_TMP    El2=C_0
+    VS_CLR_INC   Add     El1=RA_I       El2=C_1   Exit=RA_I
+    VS_CLR_LB    Jump    Exit=VS_CLR_LOOP
 RREDI VS_CLR_DONE
 
 //ET_PACK_BYTE removed — byte packing is now inline in ET_COLL_W0/W1
-(pointer-through-register pattern was buggy: Read of a value, not an ID)
+(pointer-through-register pattern was buggy: Read of a value, not an ID)//
 
 ── ET_PH_FRESH_ALLOC — alloc-or-reuse SSA index ──────────────
 IN:  RA_FAL_REG = Lux ID of SSA register to check/assign
@@ -471,14 +473,14 @@ SAVE ET_PH_FRESH_ALLOC RA_TW_LUX
     ITO FAL_NEW        Add   El1=RA_SSA_CTR    El2=C_1   Exit=RA_SSA_CTR
     ITO FAL_SAVEPRI    Write El1=RA_FAL_REG  El2=RA_SSA_CTR
     //Secondary register removed — it was corrupting native Lux words by using
-    raw SSA index as Write address. Each SSA slot has its own pointer Lux.
+    raw SSA index as Write address. Each SSA slot has its own pointer Lux.//
     EMIT  FAL_EMIT       SF_VPX
     ITO FAL_SET_INT2   Move  El1=RA_SSA_CTR    Exit=RA_TMP2
     RVOCA FAL_EMIT_INT EMIT_INT_ENTRY
 RREDI FAL_DONE
 ── ET_EMIT_SSA_REG — emit "%vN" for a given SSA register ──────
 //IN:  RA_ESAR_REG = Lux ID of the SSA index register
-Non-leaf. Saves RA_TW_LUX via SAVE macro.
+Non-leaf. Saves RA_TW_LUX via SAVE macro.//
 NOLINK
 SAVE ET_EMIT_SSA_REG RA_TW_LUX
     ITO ESAR_RDVAL        Read El1=RA_ESAR_REG  Exit=RA_TMP2
@@ -499,17 +501,17 @@ One Rule may have multiple ForType Lumen (e.g. Yaku_Read for Load+Read),
 so all are registered here.
 O(total_lumens) once at startup.
 Use SCAN_ALL_LUX to iterate all Data Lux via LUX_REGISTRY.
-Body: RTB_BODY — for each Lux, scan its ForType lumens.
+Body: RTB_BODY — for each Lux, scan its ForType lumina.//
 NOLINK
 ITO RT_BUILD_ENTRY Move El1=RTB_BODY Exit=RA_SCAN_BODY
 RVOCA RTB_SCAN_J    SCAN_ALL_LUX
 ITO RTB_DONE   Jump Exit=P0_ALLOC_EPBUF
 
 ── RTB_BODY: per-Lux body called by SCAN_ALL_LUX ─────────────
-//IN: RA_I = current Lux address. Scans its Lumen for ForType lumens.
+//IN: RA_I = current Lux address. Scans its Lumen for ForType lumina.
 Non-leaf: saves RA_LINK, RA_SCAN_STOP, RA_SCAN_BODY (inner SLO overwrites).
 RA_SCAN_BODY MUST be saved/restored: SCAN_LUMEN_OF sets it to RTB_LUX_BODY,
-but outer SCAN_ALL_LUX needs it restored to RTB_BODY for next iteration.
+but outer SCAN_ALL_LUX needs it restored to RTB_BODY for next iteration.//
 NOLINK
 SAVE RTB_BODY RA_SCAN_STOP RA_SCAN_BODY
     ITO RTB_SET_LUX   Move El1=RA_I          Exit=RA_SCAN_LUX
@@ -520,45 +522,57 @@ RREDI RTB_BODY_RET
 
 ── RTB_LUX_BODY: per-Lumen body for RT_BUILD ─────────────────
 //IN: RA_TW_LUMEN = current Lumen. Non-leaf (LR/LT expand to Voca).
-If rel==ForType: read exit (op_id), bounds check, write RT_BASE[op_id]=RA_I.
+If rel==ForType: read exit (op_id), bounds check, write RT_BASE[op_id]=RA_I.//
 NOLINK
-NORESTORE
-/NOTE: SAVE includes RA_LINK here, which is provably a no-op under the
-/automatic call stack (no internal Voca in this body — LR/LT expand to
-/plain Move/Read at macro-expansion time, not runtime calls). Left as-is:
-/touching this SAVE list risks the same kind of stack-imbalance issue as
-/EM_MISSED_BODY below (S_RA_LINK is also used there as ad-hoc scratch via
-/EM_VS_OUTER); not worth the risk for a provable no-op. Safe to remove
-/RA_LINK from this list in a future pass if EM_MISSED_BODY is untangled too.
-SAVE RTB_LUX_BODY RA_LINK
-    LR RTB_LR RA_TW_LUMEN RA_TMP          /rel
-    JEQ RTB_FTK RA_TMP ForType RTB_FT
-    ITO RTB_BODY_SKIP Move El1=S_RA_LINK Exit=RA_LINK
-    RREDI RTB_BODY_SKIP_r                   /not ForType → continue
-    LT RTB_FT RA_TW_LUMEN RA_TMP          /exit = op_id
-    ITO RTB_BCHK   ULess El1=RA_TMP El2=C_1024 Exit=RA_TMP2  /op_id < 1024
-    ITO RTB_BCHKJ  JumpIf El1=RA_TMP2 Exit=RTB_ADDR
-    ITO RTB_OOB    Move    El1=S_RA_LINK Exit=RA_LINK
-    RREDI RTB_OOB_RET                       /out of range → skip
-    ITO RTB_ADDR   Add      El1=RA_RT_BASE El2=RA_TMP Exit=RA_TMP2
-    ITO RTB_WRITE  Write El1=RA_TMP2   El2=RA_I
-    ITO RTB_LUX_RESTORE Move El1=S_RA_LINK Exit=RA_LINK
-    RREDI RTB_WRITE_RET
+/RA_LINK is preserved automatically by the call stack (Voca/Redi push/pop
+/on RA_SP) -- no manual save/restore is ever needed, regardless of how many
+/early-return points a body has.
+/NOP, not LR, names the entry point here -- and this is NOT just an
+/allocation-size issue (that part IS fixed: loader.py's _scan_ito_names
+/prepass now discovers LR/LT/RCALL_AT/EMIT/EMITI/PUTBYTE/WALK_ONE/etc.
+/automatically by scanning macros.re itself for the universal "Move
+/El1=RA_MA0 ... Exit=RA_MC_LUX" convention, instead of a hand-maintained
+/list -- see _discover_ito_naming_commands). The deeper reason: Python's
+/Wave-B (_wave2_line) natively expands only ~16 primitive commands --
+/NEW/NEWSET/NOLINK/SET/NEWREF/SETREF/LINK/ITO/BLOCK/RVOCA/RREDI/CLEAR/NOP/
+/JEQ/JZ/ALLOC_TO. LR/LT/RCALL_AT/EMIT/EMITI/PUTBYTE/WALK_ONE are NOT in
+/that list -- they only ever get expanded by LOAD_MAIN itself, at runtime,
+/via generic command-word dispatch (the command's own symbol value points
+/at its _SPN handler; see the "Restore command handler words" block in
+/loader.py's freeze()). Since LOAD_MAIN doesn't yet reach yaku.re (still
+/blocked at file 33/saku.re), "LR RTB_LUX_BODY ..." is, right now, never
+/actually executed by *either* build path -- not a sizing problem, a
+/"nothing ever writes this content at all yet" problem. NOP is in the
+/~16-primitive list Python *does* natively expand, so it's correct
+/regardless of self-hosting progress. Confirmed by direct regression
+/(twice): aether[RTB_LUX_BODY] reads back as 0 with LR-direct, correct
+/with NOP, even after the prepass fix.
+NOP RTB_LUX_BODY
+LR RTB_LR RA_TW_LUMEN RA_TMP          /rel
+JEQ RTB_FTK RA_TMP ForType RTB_FT
+RREDI RTB_BODY_SKIP_r                   /not ForType → continue
+LT RTB_FT RA_TW_LUMEN RA_TMP          /exit = op_id
+ITO RTB_BCHK   ULess El1=RA_TMP El2=C_1024 Exit=RA_TMP2  /op_id < 1024
+ITO RTB_BCHKJ  JumpIf El1=RA_TMP2 Exit=RTB_ADDR
+RREDI RTB_OOB_RET                       /out of range → skip
+ITO RTB_ADDR   Add      El1=RA_RT_BASE El2=RA_TMP Exit=RA_TMP2
+ITO RTB_WRITE  Write El1=RA_TMP2   El2=RA_I
+RREDI RTB_WRITE_RET
 
 ── P0_COLLECT: scan LUX_REGISTRY, collect Entry luces ──────────────
 //We do this as a PURE scan (no nested scans, no EMIT_FUNC calls).
-For each lux with Entry→Yaku or Entry→SelfYaku, store addr in EP_BUFFER.
+"For" each lux with Entry→Yaku or Entry→SelfYaku, store addr in EP_BUFFER.
 EP_BUFFER is allocated BEFORE P0_PREAM_DONE resets K_CURSOR so it lands
 above BFS/VS/SSA/RT scratch and survives the reset.
 Max capacity: EP_BUF_MAX entries (32 is generous — real programs have few entries).
 
 Allocate EP_BUFFER first, while bump is still above BFS/VS/SSA scratch.
-Then emit preamble and reset K_CURSOR — EP_BUF is safely above the freed region.
+Then emit preamble and reset K_CURSOR — EP_BUF is safely above the freed region.//
 NEWSET EP_BUF_MAX 32
 NEW RA_EP_BUF_BASE    /base address of EP_BUFFER
 NEW RA_EP_BUF_CNT     /how many entries collected
 
-ALLOC_RAW EP_BUF_MAX RA_EP_BUF_BASE
+ALLOC_RAW P0_ALLOC_EPBUF EP_BUF_MAX RA_EP_BUF_BASE
 CLEAR P0_EPBUF_CLR RA_EP_BUF_CNT
 
 EMIT P0_INIT_DONE SF_DECLARE
@@ -577,52 +591,45 @@ ITO P0_SET_COL_BODY Move El1=P0_COLLECT_BODY Exit=RA_SCAN_BODY
 RVOCA P0_COLSCANJ   SCAN_ALL_LUX
 ITO P0_COLLECT_DONE Jump Exit=P0_EMIT_INIT   /SCAN_ALL_LUX returns here; jump to P0_EMIT
 //IN: RA_I = Lux address. Check Entry→Yaku/SelfYaku via direct slot read (O(1)).
-Does NOT call any other scan. Does NOT call EMIT_FUNC.
+Does NOT call any other scan. Does NOT call EMIT_FUNC.//
 NOLINK
-NORESTORE
-SAVE P0_COLLECT_BODY
-    /Fast Entry check: slot 7 = first extra lumen rel (for ITO luxs with compact layout)
-    ITO P0_CB_OPCHK    Add  El1=RA_I El2=C_1        Exit=RA_TMP   /slot 1 = op
-    ITO P0_CB_OPRD     Read El1=RA_TMP              Exit=RA_TMP
-    ITO P0_CB_OPTEST   JumpIf El1=RA_TMP             Exit=P0_CB_ITO
-    /Data lux: lumens at slot 1. Check (rel=Entry at pos 1)
-    ITO P0_CB_DATA_REL Add  El1=RA_I El2=C_1        Exit=RA_TMP
-    ITO P0_CB_DATA_RD  Read El1=RA_TMP              Exit=RA_FLAG
-    JEQ P0_CB_DATA_EQ RA_FLAG Entry P0_CB_DATA_EXIT
-    ITO P0_CB_SKIP     Move El1=S_RA_LINK           Exit=RA_LINK
-    RREDI P0_CB_SKIP_r
-    CHAIN
-        P0_CB_DATA_EXIT Add  El1=RA_I El2=C_2        Exit=RA_TMP
-        P0_CB_DATA_TCK  Read El1=RA_TMP              Exit=RA_TMP2
-            ITO P0_CB_DATA_JMPIF JumpIf El1=RA_TMP2 Exit=P0_CB_CHK_TGT
-        P0_CB_SKIP2     Move El1=S_RA_LINK           Exit=RA_LINK
-            RREDI P0_CB_SKIP2_r
-    /ITO lux: extra lumen at slot 7
-    CHAIN
-        P0_CB_ITO      Add  El1=RA_I El2=C_7        Exit=RA_TMP
-        P0_CB_ITO_RD   Read El1=RA_TMP              Exit=RA_FLAG
-            JEQ P0_CB_ITO_EQ RA_FLAG Entry P0_CB_ITO_EXIT
-        P0_CB_NENT     Move El1=S_RA_LINK           Exit=RA_LINK
-            RREDI P0_CB_NENT_r
-    NOLINK
-    ITO P0_CB_ITO_EXIT  Add  El1=RA_I El2=C_8        Exit=RA_TMP   /slot 8 = exit
-    ITO P0_CB_ITO_RD  Read El1=RA_TMP              Exit=RA_TMP2  /exit → RA_TMP2 (not RA_FLAG!)
-    /Check exit == Yaku or SelfYaku — use RA_TMP2 to preserve value across Equals
-    JEQ P0_CB_CHK_TGT RA_TMP2 Yaku P0_CB_STORE
-    JEQ P0_CB_CHK_CL RA_TMP2 SelfYaku P0_CB_STORE
-    ITO P0_CB_NOEP     Move El1=S_RA_LINK           Exit=RA_LINK
-    RREDI P0_CB_NOEP_r
-    NOLINK
-    /Store RA_I in EP_BUFFER
-    ITO P0_CB_STORE    Add  El1=RA_EP_BUF_BASE El2=RA_EP_BUF_CNT Exit=RA_TMP
-    ITO P0_CB_WRITE    Write El1=RA_TMP El2=RA_I
-    ITO P0_CB_INC      Add  El1=RA_EP_BUF_CNT El2=C_1 Exit=RA_EP_BUF_CNT
-    ITO P0_CB_RET      Move El1=S_RA_LINK           Exit=RA_LINK
-    RREDI P0_CB_RET_r
+/Fast Entry check: slot 7 = first extra lumen rel (for ITO luxs with compact layout)
+ITO P0_COLLECT_BODY Add  El1=RA_I El2=C_1        Exit=RA_TMP   /slot 1 = op
+ITO P0_CB_OPRD     Read El1=RA_TMP              Exit=RA_TMP
+ITO P0_CB_OPTEST   JumpIf El1=RA_TMP             Exit=P0_CB_ITO
+/Data lux: lumina at slot 1. Check (rel=Entry at pos 1)
+ITO P0_CB_DATA_REL Add  El1=RA_I El2=C_1        Exit=RA_TMP
+ITO P0_CB_DATA_RD  Read El1=RA_TMP              Exit=RA_FLAG
+JEQ P0_CB_DATA_EQ RA_FLAG Entry P0_CB_DATA_EXIT
+RREDI P0_CB_SKIP_r
+CHAIN
+    P0_CB_DATA_EXIT Add  El1=RA_I El2=C_2        Exit=RA_TMP
+    P0_CB_DATA_TCK  Read El1=RA_TMP              Exit=RA_TMP2
+        ITO P0_CB_DATA_JMPIF JumpIf El1=RA_TMP2 Exit=P0_CB_CHK_TGT
+        RREDI P0_CB_SKIP2_r
+/ITO lux: extra lumen at slot 7
+CHAIN
+    P0_CB_ITO      Add  El1=RA_I El2=C_7        Exit=RA_TMP
+    P0_CB_ITO_RD   Read El1=RA_TMP              Exit=RA_FLAG
+        JEQ P0_CB_ITO_EQ RA_FLAG Entry P0_CB_ITO_EXIT
+        RREDI P0_CB_NENT_r
+NOLINK
+ITO P0_CB_ITO_EXIT  Add  El1=RA_I El2=C_8        Exit=RA_TMP   /slot 8 = exit
+ITO P0_CB_ITO_RD  Read El1=RA_TMP              Exit=RA_TMP2  /exit → RA_TMP2 (not RA_FLAG!)
+/Check exit == Yaku or SelfYaku — use RA_TMP2 to preserve value across Equals
+JEQ P0_CB_CHK_TGT RA_TMP2 Yaku P0_CB_STORE
+JEQ P0_CB_CHK_CL RA_TMP2 SelfYaku P0_CB_STORE
+RREDI P0_CB_NOEP_r
+NOLINK
+/Store RA_I in EP_BUFFER
+ITO P0_CB_STORE    Add  El1=RA_EP_BUF_BASE El2=RA_EP_BUF_CNT Exit=RA_TMP
+ITO P0_CB_WRITE    Write El1=RA_TMP El2=RA_I
+ITO P0_CB_INC      Add  El1=RA_EP_BUF_CNT El2=C_1 Exit=RA_EP_BUF_CNT
+RREDI P0_CB_RET_r
 
 ── P0_EMIT: iterate EP_BUFFER, emit one function per Entry ──────────
 //Simple index loop: RA_EP_IDX from 0 to RA_EP_BUF_CNT.
-No external scan active during EMIT_FUNC — safe for nested scans.
+No external scan active during EMIT_FUNC — safe for nested scans.//
 CLEAR P0_EMIT_INIT RA_EP_COUNT
 NEW RA_EP_IDX          /current index into EP_BUFFER
 CLEAR P0_IDX_CLR RA_EP_IDX
@@ -648,9 +655,9 @@ ITO P0_HALT     End
 //P0_PREAM_TW: RA_TW_LUX must receive the ID of PREAM_0000, not its word.
 Move El1=PREAM_0000 reads aether[PREAM_0000] = packed bytes (word) — wrong.
 SETREF RA_PREAM_BASE PREAM_0000 at freeze sets aether[RA_PREAM_BASE]=PREAM_0000_id.
-Then Read RA_PREAM_BASE → RA_TW_LUX gives the correct ID.
+Then Read RA_PREAM_BASE → RA_TW_LUX gives the correct ID.//
 SETREF RA_PREAM_BASE PREAM_0000
-//EMIT_STR_ENTRY in output.re already decodes packed u64 byte chains identically.
+//EMIT_STR_ENTRY in output.re already decodes packed u64 byte chains identically.//
 NEW RA_PREAM_BASE
 
 ── EMIT_FUNC: emit one LLVM function ────────────────────────
@@ -668,7 +675,7 @@ ITO EF_TO_BODY Jump Exit=EF_VSCLEAR
 
 //Secondary entry: full function — header only differs from primary (no @reca_init).
 LLVM labels are function-local; secondary cannot branch into @main's labels.
-Solution: secondary runs its own EMIT_FUNC_BODY (VS clear, BFS from own entry, etc.).
+Solution: secondary runs its own EMIT_FUNC_BODY (VS clear, BFS from own entry, etc.).//
 NOLINK
 EMIT EMIT_FUNC_SECONDARY SF_FUNCOPEN
 EMIT EF_SEC_L SF_FUNCSEC
@@ -690,34 +697,28 @@ CLEAR EF_BQRST2 RA_BQ_TAIL
 ITO EF_ENQUEUE Move El1=RA_ENTRY_LUX Exit=RA_TMP
 RVOCA EF_ENQ_R BFS_ENQ
 RVOCA EF_BFSJ BFS_LOOP_SAVE
-ITO EF_BFS_DONE Move El1=EF_EMISS Exit=RA_EM_OUTER
-ITO EF_BMISSJ   Jump  Exit=EMIT_MISSED
-ITO EF_EMISS Move El1=EF_EJRD Exit=RA_JRD_OUTER
-ITO EF_EMISSJ   Jump  Exit=EMIT_JR_DISPATCH
+RCALL_AT EF_BFS_DONE EMIT_MISSED EF_EMISS
+RCALL_AT EF_EMISS EMIT_JR_DISPATCH EF_EJRD
 EMIT EF_EJRD SF_FUNCEND
 ITO EF_RESTORE_SCAN Move El1=RA_ENTRY_LUX Exit=RA_SCAN_LUX  /restore RA_SCAN_LUX clobbered by RTB/BFS_SCAN_LUX inside EMIT_FUNC
 RREDI EF_RET_r
 
 ── EMIT_MISSED: emit basic blocks not reached by BFS ──────────
 //Uses SCAN_ITO_LUX (instruction-only registry) so RO/Data Lux
-are not accidentally compiled as instruction blocks.////
+are not accidentally compiled as instruction blocks.//
 ITO EMIT_MISSED  Move El1=EM_MISSED_BODY Exit=RA_SCAN_BODY
 RVOCA EM_SCANJ SCAN_ITO_LUX
 RREDI EM_DONE_r
 
 ── EM_MISSED_BODY: per-Lux body for EMIT_MISSED ───────────────
 //IN: RA_I = Lux address. Non-leaf (WALK_ONE + VS_TEST_SET + RCALL_AT).
-Saves RA_LINK, RA_SCAN_BODY, RA_SCAN_STOP so EMIT_BLOCK doesn't clobber them.//
-/NOTE on RA_LINK: under the automatic call stack, RA_LINK save/restore here
-/would normally be redundant too — EXCEPT S_RA_LINK is ALSO reused below
-/(EM_HASOP/EM_VTS_DONE) as ad-hoc scratch storage across the VS_TEST_SET
-/call, unrelated to its "saved return address" role. Untangling that reuse
-/requires understanding intent in code whose output is currently untestable
-/(EMIT_TMPL/yaku.re produce 0 bytes in both old and new builds). Left as-is
-/pending a dedicated pass once the compiler's output can be verified.
+Saves RA_SCAN_BODY, RA_SCAN_STOP, RA_SAL_CUR, SAL_REG_END so EMIT_BLOCK
+doesn't clobber them. RA_LINK is preserved automatically by the call stack
+(Voca/Redi push/pop on RA_SP) -- removed from the manual SAVE list; it was
+never a valid manual-save target in the first place.//
 NOLINK
 NORESTORE
-SAVE EM_MISSED_BODY RA_LINK RA_SCAN_BODY RA_SCAN_STOP RA_SAL_CUR SAL_REG_END
+SAVE EM_MISSED_BODY RA_SCAN_BODY RA_SCAN_STOP RA_SAL_CUR SAL_REG_END
     ITO EM_SET_I        Move El1=RA_I          Exit=RA_EM_I
     /Check Op: read directly from SLOT_OP (compact ITO slot 1)
     ITO EM_OPCHK     Add     El1=RA_EM_I   El2=C_1   Exit=RA_TMP
@@ -741,24 +742,19 @@ SAVE EM_MISSED_BODY RA_LINK RA_SCAN_BODY RA_SCAN_STOP RA_SAL_CUR SAL_REG_END
     JEQ EM_EPCLM_CK RA_FLAG SelfYaku EM_NOOP
     /Other Entry target → fall through to compile
     ITO EM_EPNO_LOOM Jump   Exit=EM_HASOP
-    NEW EM_VS_OUTER
-    ITO EM_HASOP     Move   El1=S_RA_LINK Exit=EM_VS_OUTER
-    ITO EM_SETVSID   Move   El1=RA_EM_I  Exit=RA_VS_ID
+    ITO EM_HASOP     Move   El1=RA_EM_I  Exit=RA_VS_ID
     RVOCA EM_VTSR VS_TEST_SET
-    ITO EM_VTS_DONE  Move   El1=EM_VS_OUTER Exit=S_RA_LINK
     ITO EM_VTS_CHK   JumpIf El1=RA_FLAG   Exit=EM_VISITED
     ITO EM_EMIT      Move   El1=RA_EM_I   Exit=RA_INSTR
     //Set RA_EB_OUTER=EM_VISITED: EMIT_BLOCK returns here, not to BFS_SCAN_LUX.
-    EB_SAVE_RET was wrong: it set RA_EB_OUTER=BFS_SCAN_LUX causing BFS restart per block.
-    ITO EM_EB_OUTER  Move   El1=EM_VISITED Exit=RA_EB_OUTER
-    ITO EM_EMITJ     Jump   Exit=EMIT_BLOCK
+    EB_SAVE_RET was wrong: it set RA_EB_OUTER=BFS_SCAN_LUX causing BFS restart per block.//
+    RCALL_AT EM_EB_OUTER EMIT_BLOCK EM_VISITED
     NOLINK
     /Shared restore path for NOOP and VISITED — identical register restores
     ITO EM_NOOP      Move El1=S_RA_SCAN_BODY Exit=RA_SCAN_BODY
     ITO EM_VISITED   Move El1=S_RA_SCAN_STOP Exit=RA_SCAN_STOP
     ITO EM_RST_RSC   Move El1=S_RA_SAL_CUR   Exit=RA_SAL_CUR
     ITO EM_RST_RSRE  Move El1=S_SAL_REG_END  Exit=SAL_REG_END
-    ITO EM_RST_RL    Move El1=S_RA_LINK      Exit=RA_LINK
     RREDI EM_RST_r
 
 ── EMIT_JR_DISPATCH: emit %L_jrdispatch switch block ──────────
@@ -813,12 +809,11 @@ ITO BFS_DEQR    Move    El1=RA_BQ_HEAD     Exit=RA_TMP
 RVOCA BFS_DEQBQRJ BQ_ADDR
 ITO BFS_DEQDONE Read El1=RA_TMP         Exit=RA_INSTR
 ITO BFS_HINC    Add     El1=RA_BQ_HEAD     El2=C_1 Exit=RA_BQ_HEAD
-ITO EB_SAVE_RET Move    El1=BFS_SCAN_LUX  Exit=RA_EB_OUTER  /save return point for EMIT_BLOCK
-ITO BFS_EMITJ   Jump    Exit=EMIT_BLOCK
+RCALL_AT EB_SAVE_RET EMIT_BLOCK BFS_SCAN_LUX
 NOLINK
 //Enqueue successors: read SLOT_NEXT directly + check SLOT_EXIT for Jump/JumpIf.
 Only Jump and JumpIf have Exit = static ITO address → must follow for correct CFG.
-Voca/JumpReg/Redi Exit is runtime (RA_LINK or register) → must NOT follow.
+Voca/JumpReg/Redi Exit is runtime (RA_LINK or register) → must NOT follow.//
 ITO BFS_SCAN_LUX Add   El1=RA_INSTR El2=C_5  Exit=RA_TMP   /SLOT_NEXT=5
 ITO BFS_RD_NXT   Read El1=RA_TMP            Exit=RA_TMP    /read next ITO addr
 JZ    BFS_NXTCHK  RA_TMP BFS_SCAN_EXIT                     /0 (NOLINK) → skip to exit check
@@ -827,7 +822,7 @@ RCALL_AT BFS_ENQ_NJ BFS_ENQ BFS_SCAN_EXIT
 //Check SLOT_EXIT for Jump / JumpIf, and SLOT_E1 for Voca.
 Jump/JumpIf: Exit = static destination block address.
 Voca: El1 = static target subroutine address (Exit=RA_LINK is dynamic, skip it).
-Redi/JumpReg: fully dynamic → skip.
+Redi/JumpReg: fully dynamic → skip.//
 NOLINK
 ITO BFS_SCAN_EXIT Add  El1=RA_INSTR El2=C_1  Exit=RA_TMP2  /SLOT_OP=1
 ITO BFS_EXIT_ROP  Read El1=RA_TMP2          Exit=RA_TMP2   /read op_id
@@ -860,7 +855,7 @@ ITO EB_RDOP      Read El1=RA_TMP                 Exit=RA_FLAG
 ITO EB_PREOPDJ   JumpIf  El1=RA_FLAG             Exit=EB_EMIT_LBL
 //Lux without Op: not an instruction, skip without clearing visited bit.
 (Clearing the bit caused infinite BFS loops — a Lux can be re-enqueued
-after its bit is cleared, leading EMIT_BLOCK to clear it again, repeat.)
+after its bit is cleared, leading EMIT_BLOCK to clear it again, repeat.)//
 RREDI EB_EARLY_RET_r
 
 PUTBYTE EB_EMIT_LBL LF
@@ -883,7 +878,7 @@ ITO EB_SSA_GEN_INC Add El1=RA_SSA_GEN El2=C_1 Exit=RA_SSA_GEN
 CLEAR EB_SSA_GEN_DONE RA_TMP
 //Read El1/El2/Exit/Next from compact ITO fixed slots (O(1) direct reads).
 RA_EXIT_N = SLOT_EXIT: exit is unified — for jumps it is destination block,
-for arithmetic/move it is target register. RO_LDEST only appears in jump templates.
+for arithmetic/move it is target register. RO_LDEST only appears in jump templates.//
 
 CHAIN
     EB_LOADOPS   Add   El1=RA_INSTR El2=C_2  Exit=RA_TMP
@@ -965,7 +960,7 @@ EMITI EB_BRNID RA_NXT_N
 PUTBYTE EB_BRNL LF
 EMIT EB_EMIT_UNREACH SF_UNREACHABLE
 //(EB_NO_FALL moved above; EB_EMIT_UNREACH falls through to EB_NO_FALL if needed)
-Second JumpReg for the fallthrough path after emitting unreachable/br:
+Second JumpReg for the fallthrough path after emitting unreachable/br://
 RREDI EB_FALL_END_r
 
 ── EMIT_PRELOADS: emit GEP+load for each operand ─────────────
@@ -979,13 +974,13 @@ RVOCA EPL_A2R PRELOAD_ARG
 ITO EPL_A2SAVE Write El1=RA_SSA_V2 El2=RA_SSA_OUT  /write ssa_idx into DATA slot, preserve pointer
 JZ EPL_EXIT RA_EXIT_N EPL_SYSCHK
 //Target: inline GEP — no separate %ptN. ETH_PTR_TGT emits getelementptr inbounds inline.
-RA_EXIT_N already set by EB_STEXIT. Nothing to emit here.
+RA_EXIT_N already set by EB_STEXIT. Nothing to emit here.//
 JEQ EPL_SYSCHK RA_OP_ID Exire EPL_SYS_A0
 ITO EPL_NOSYS   Jump  Exit=EPL_DONE
 
 //Exire preload: 5 explicit PRELOAD_ARG calls for SC_A0..SC_A3, SC_NR.
 Use SC_*_REF (stable SETREF pointers) so RA_TMP = SC_*_id (Lux ID),
-not heap[SC_*] (runtime value which changes after Move SC_* writes into it).
+not heap[SC_*] (runtime value which changes after Move SC_* writes into it).//
 FOR A0 A1 A2 A3 NR
     ITO EPL_SYS_{X}   Move El1=SC_{X}_REF Exit=RA_TMP
     RVOCA EPL_SYS_{X}R  PRELOAD_ARG
@@ -993,27 +988,23 @@ FOR A0 A1 A2 A3 NR
 RREDI EPL_DONE
 ── PRELOAD_ARG: emit inline-GEP load for one operand Lux ──────────
 //Emits: "  %vN = load i64, ptr getelementptr inbounds ([S x i64], ptr @heap, i64 0, i64 <lid>)"
-No separate %ptN register — GEP is inlined into load operand (valid LLVM IR).
+No separate %ptN register — GEP is inlined into load operand (valid LLVM IR).//
 NOLINK
-NORESTORE
-SAVE PRELOAD_ARG
-    ITO PA_SETLID  Move El1=RA_TMP Exit=RA_SSA_LID
-    ITO PA_SAVNID  Move El1=RA_TMP Exit=RA_PA_LID
-    RCALL_AT PA_GS GET_SSA PA_ISNEW
-    JZ PA_ISNEW RA_SSA_HIT PA_EMIT_ILOAD
-    ITO PA_SKIP  Move El1=S_RA_LINK Exit=RA_LINK
-    RREDI PA_SKIP_r
-    NOLINK
-    EMIT PA_EMIT_ILOAD SF_INDENT
-    EMIT PA_LLV        SF_VPX
-    EMITI PA_LLSSA     RA_SSA_OUT
-    EMIT PA_LLIGPRE    SF_LOAD_IGEP_PRE
-    EMITI PA_LLTXSZ    K_AETHER_SIZE
-    EMIT PA_LLMID      SF_GEP_MID
-    EMITI PA_LLID      RA_PA_LID
-    EMIT PA_LLCLOSE    SF_IGEP_CLOSE_NL
-    ITO PA_RET  Move El1=S_RA_LINK Exit=RA_LINK
-    RREDI PA_RET_r
+ITO PRELOAD_ARG  Move El1=RA_TMP Exit=RA_SSA_LID
+ITO PA_SAVNID  Move El1=RA_TMP Exit=RA_PA_LID
+RCALL_AT PA_GS GET_SSA PA_ISNEW
+JZ PA_ISNEW RA_SSA_HIT PA_EMIT_ILOAD
+RREDI PA_SKIP_r
+NOLINK
+EMIT PA_EMIT_ILOAD SF_INDENT
+EMIT PA_LLV        SF_VPX
+EMITI PA_LLSSA     RA_SSA_OUT
+EMIT PA_LLIGPRE    SF_LOAD_IGEP_PRE
+EMITI PA_LLTXSZ    K_AETHER_SIZE
+EMIT PA_LLMID      SF_GEP_MID
+EMITI PA_LLID      RA_PA_LID
+EMIT PA_LLCLOSE    SF_IGEP_CLOSE_NL
+RREDI PA_RET_r
 
 ── GET_SSA: lookup or assign SSA index for Lux RA_SSA_LID ──
 //Direct-map: slot = RA_SSA_BASE + lux_id. Format: (gen << 32) | ssa_idx.
@@ -1021,7 +1012,7 @@ Hit: slot_gen == RA_SSA_GEN. Miss: allocate new SSA index, write slot.
 Leaf (no sub-calls → no OUTER needed).
 IN:  RA_SSA_LID = Lux ID to look up
 OUT: RA_SSA_OUT = SSA index (existing or newly assigned)
-RA_SSA_HIT = 0 if new (slot was miss), nonzero if found
+RA_SSA_HIT = 0 if new (slot was miss), nonzero if found//
 NOLINK
 ITO GET_SSA      Add     El1=RA_SSA_BASE   El2=RA_SSA_LID  Exit=RA_TMP
 ITO GS_LOAD      Read El1=RA_TMP        Exit=RA_TMP2
@@ -1065,7 +1056,7 @@ ITO ET_LTCHECK     Right El1=RA_ET_BYTE       El2=C_5           Exit=RA_TMP   /b
 JZ    ET_ESCCHECK  RA_TMP ET_ESCAPE                              />> 5 == 0 → byte < 0x20
 
 /── Literal byte (0x20..0xFF): emit directly ────────────────────────────────
-NOITO
+CHAIN | NOLINK
     ET_LITERAL     Move  El1=RA_ET_BYTE       Exit=RA_BYTE
         RVOCA ET_LIT_PUT PUT_BYTE
         ITO ET_LIT_JN      Jump  Exit=ET_ADVANCE
@@ -1093,7 +1084,7 @@ SWITCH RA_ET_BYTE
     C_18  ETH_VX3
     C_19  ETH_VX8
 
-NOITO
+CHAIN | NOLINK
     ET_ADVANCE     Add   El1=RA_ET_SHIFT      El2=C_8           Exit=RA_ET_SHIFT
         JEQ   ET_LUXCHK   RA_ET_SHIFT C_64           ET_NEXT_LUX
         ITO ET_LOOPBACK    Jump  Exit=ET_EXTRACT
@@ -1104,7 +1095,7 @@ NOITO
 /── ETH_* handlers ──────────────────────────────────────────────────────────
 /Each handler emits its value then jumps to ET_ADVANCE to consume the escape byte.
 
-NOITO
+CHAIN | NOLINK
     ETH_V1       Move  El1=RA_SSA_V1   Exit=RA_ESAR_REG
         RVOCA ETH_V1J      ET_EMIT_SSA_REG
         ITO ETH_V1_JN    Jump  Exit=ET_ADVANCE
@@ -1124,7 +1115,7 @@ NOITO
         RVOCA ETH_CMP_J    ET_EMIT_SSA_REG
         ITO ETH_CMP_JN   Jump  Exit=ET_ADVANCE
 
-NOITO
+CHAIN | NOLINK
     ETH_ARITH    Move  El1=RA_SSA_ARITH_IDX Exit=RA_ESAR_REG
         RVOCA ETH_ARITH_J  ET_EMIT_SSA_REG
         ITO ETH_ARITH_JN Jump  Exit=ET_ADVANCE
@@ -1182,11 +1173,10 @@ RREDI ET_DONE
 //P0_NID is the compiler ITO entry. SelfYaku prevents P0_SCAN
 (which checks Entry→Yaku, not Entry→SelfYaku) from compiling
 the compiler itself. ITO luxs can carry extra LINK lumen safely —
-interpreter scans for rel=Next, not pc+fixed_size.
+interpreter scans for rel=Next, not pc+fixed_size.//
 LINK P0_NID Entry SelfYaku
 
-LINK EB_SAVE_RET Next BFS_EMITJ
-//RT_BUILD_ENTRY is the RCALL_AT landing for P0_INIT_C → INIT_BFS.
+//RT_BUILD_ENTRY is the RCALL_AT landing for P0_INIT_C → INIT_BFS.//
 NEWREF SelfYaku
 This explicit Next link ensures BFS reaches it statically (NOLINK breaks auto-Next).
 LINK P0_INIT_C Next RT_BUILD_ENTRY

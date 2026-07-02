@@ -23,7 +23,7 @@ LIMITATION (current):
   No thread join / barrier (use futex manually for now).
   No thread-local storage.
 
-DEPENDENCY: aspects.re  constants.re  regs.re  alloc.re  flux.re
+DEPENDENCY: aspects.re  constants.re  registers.re  alloc.re  flux.re
             linux_generic.re  callstack.re//
 
 ── Constants ──────────────────────────────────────────────────────────────────
@@ -50,8 +50,7 @@ NOLINK
     RVOCA SF_COUNT     FLUX_COUNT_NEXT
     /If only 0 or 1 Next → nothing to fork, return 0
     JZ SF_CNT0 RA_FX_COUNT SF_SKIP
-    ITO SF_CNT1      Equal El1=RA_FX_COUNT   El2=C_1          Exit=RA_FLAG
-    ITO SF_CNT1J     JumpIf El1=RA_FLAG      Exit=SF_SKIP
+    JEQ SF_CNT1 RA_FX_COUNT C_1 SF_SKIP
     /Find first Next slot
     ITO SF_FND_INIT  Move  El1=FLUX_SLOT_NEXT Exit=RA_FX_FIND
     RVOCA SF_FIND1     FLUX_FIND_SLOT
@@ -76,8 +75,7 @@ NOLINK
     /This slot is a Next
     ITO SF_IS_NEXT   Add   El1=RA_SCHED_IDX   El2=C_1  Exit=RA_SCHED_IDX
     /First Next (idx==1 after increment): current thread takes it, skip fork
-    ITO SF_IDX1CK    Equal El1=RA_SCHED_IDX   El2=C_1  Exit=RA_FLAG
-    ITO SF_IDX1J     JumpIf El1=RA_FLAG        Exit=SF_NEXT_ADV
+    JEQ SF_IDX1CK RA_SCHED_IDX C_1 SF_NEXT_ADV
     /Other Nexts: fork new thread
     ITO SF_PC_SAVE   Move  El1=RA_FX_VAL       Exit=RA_SCHED_NEXT
     /Allocate stack for new thread (from flux zone)

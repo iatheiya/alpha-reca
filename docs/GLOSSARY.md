@@ -14,7 +14,7 @@ One slot in Aether. One machine word. The atom of Reca.
 A Lux has no intrinsic type or meaning — what it represents is decided by whoever reads it.
 An address, an integer, an opcode, a character — all are luces.
 
-**Lumen** *(Latin: a beam of light, a flow — pl. lumens)*
+**Lumen** *(Latin: a beam of light, a flow — pl. lumina)*
 A directed connection from one Lux to another.
 In the current Aria: stored as a `(rel, exit)` pair inline after a Lux's word.
 The lumen concept is canon; its physical layout is not.
@@ -44,7 +44,7 @@ adopted accords and reports the count.
 
 **ITO** *(Latin: ito — "go", "step"; imperative of ire)*
 An instruction Lux. One step of execution.
-Stored as: `[word, op, e1, e2, exit, next, pad, lumens...]`.
+Stored as: `[word, op, e1, e2, exit, next, pad, lumina...]`.
 The `op` field holds the address of an Aspect Lux, which determines what the ITO does.
 
 **Aspect**
@@ -125,3 +125,27 @@ the new address.
 `SLOT_NEXT >= FLUX_BOTTOM` → `_exec_flux(SLOT_NEXT)`.
 Dispatches through a structured flux Lux that can carry multiple `Next` targets.
 Foundation for future parallel fan-out via `Exire(clone)`. Rare in current code.
+
+---
+
+## WAVE
+
+`WAVE label Op [El1=X] [El2=Y] [Exit=Z] [At=A] [Next=N] [Reset=1]`
+
+Runtime ITO synthesizer. The mirror of `ITO` for dynamic (runtime) graph construction.
+
+**What it does:** Synthesizes a single ITO lux at runtime with the given fields. Expands to `__LT_ALLOC_ITO` + 5 Move nodes + `Voca WRITE_ITO_SLOTS`, all wired as static ITOs that execute during LOAD_MAIN.
+
+**Parameters:**
+- `label` — name of the entry node (the `__LT_ALLOC_ITO` lux, or the `Move At→RA_MC_LUX` lux when `At=` is used)
+- `Op` — operation name (same as in `ITO`: `Move`, `Voca`, `Equal`, `Jump`, etc.)
+- `El1=X`, `El2=Y`, `Exit=Z` — ITO operands, all optional (default to `C_0`)
+- `At=A` — reuse existing lux at address A instead of allocating a new one (skips `__LT_ALLOC_ITO`); used when the lux is already allocated externally (e.g. `At=RA_MA0`)
+- `Next=N` — after WRITE_ITO_SLOTS, also wire the synthesized ITO's next-slot to N; eliminates manual `Add+Write` link pairs between WAVE calls
+- `Reset=1` — use `WRITE_ITO_SLOTS_RESET` instead of `WRITE_ITO_SLOTS`; resets `RA_MC_PREV` after linking (used for chain terminators)
+
+**Replaces:** The old manual pattern of `__LT_ALLOC_ITO` + 4–5 `Move El1=X Exit=RA_MC_*` + `RVOCA WRITE_ITO_SLOTS`.
+
+**Used by:** RVOCA, RREDI, CLEAR, NOP, JEQ, JZ, LX, LH, WALK_ONE, LINK_OP, UNLINK_OP, LR, LT, WALK_ITO, ALLOC_TO, RCALL_AT, RCN_IMPL (partial).
+
+**Implemented in:** `loader.py` `_wave2_line` (preprocessor command, not a Reca macro).

@@ -25,7 +25,8 @@ Wave-B in Python duplicates LOAD_MAIN and is gradually removed as it stabilises.
 | `aspects.re` | 24 Aspects | Unchanged |
 | `constants.re` | SLOT_*, ITO_SIZE, C_N | Unchanged |
 | `registers.re` | RA_MA*, RA_LOAD_*, SC_* | Unchanged |
-| `bootstrap.re` | Primitives: htable, tokeniser, file I/O, bump alloc | **Permanent** — always needed |
+| `lexer.re` | Tokenizer/byte I/O: BS_READ_TOKEN, BS_READ_BYTE, BS_SKIP_TO_EOL | **Permanent** — always needed |
+| `intern.re` | Interning/symbol table: BS_INTERN, BS_LOOKUP, BS_HTAB_000 | **Permanent** — always needed |
 | `macros.re` | Reca programs for commands (JEQ, JZ, CLEAR, RVOCA…) | **Permanent** |
 | `saku.re` | LOAD_MAIN: .re file loader | **Permanent** |
 | `alloc.re` | ALLOC_LUX, ADD_LUMEN, REMOVE_LUMEN, K_CURSOR | Unchanged |
@@ -35,16 +36,19 @@ Wave-B in Python duplicates LOAD_MAIN and is gradually removed as it stabilises.
 | `yaku.re` | LLVM IR emitter | Unchanged |
 | `loader.py` | Python scaffold → gradually shrinks | Only: aspects + launch |
 
-### bootstrap.re — why not rename it
+### lexer.re / intern.re — why not rename them (formerly bootstrap.re)
 
-Despite the name, bootstrap.re contains **permanent primitives** used after self-hosting:
-- `BS_READ_TOKEN`, `BS_INTERN`, `BS_LOOKUP` — lexer/interner (always needed by LOAD_MAIN)
-- `BS_READ_BYTE`, `BS_SKIP_TO_EOL` — file I/O
-- `ALLOC_LUCES` — bump allocator (used by all code)
-- `BS_HTAB_000` — symbol table
+These two files (split out of the former `bootstrap.re`) contain **permanent
+primitives** used after self-hosting:
+- `BS_READ_TOKEN`, `BS_READ_BYTE`, `BS_SKIP_TO_EOL` (lexer.re) — file I/O
+  and tokenizing (always needed by LOAD_MAIN)
+- `BS_INTERN`, `BS_LOOKUP`, `BS_HTAB_000` (intern.re) — interner/symbol
+  table (always needed by LOAD_MAIN)
+- `ALLOC_LUCES` (alloc.re) — bump allocator (used by all code)
 
-The file iteration logic (`BS_MAIN`, `BS_LOAD_ALL_NEW`, `BS_WIRE_ALL`) is an
-alternative loading path, currently unused (LOAD_MAIN is used instead).
+`bootstrap.re`'s old alternative file-iteration path (`BS_MAIN`,
+`BS_LOAD_ALL_NEW`, `BS_WIRE_ALL`) was removed outright in the split, not
+carried over — LOAD_MAIN is the only loading path now.
 
 ---
 
@@ -63,7 +67,7 @@ alternative loading path, currently unused (LOAD_MAIN is used instead).
 - `_wave_newref_line`: wires NEWREF/SETREF — LOAD_MAIN handles this itself
 
 **saku.re (LOAD_MAIN) — authoritative loader:**
-- Wave 1: prepass — counts LINK lumens per source
+- Wave 1: prepass — counts LINK lumina per source
 - Wave 2: load — builds the graph, allocates ITO luces of the right size
 - Commands: ITO, NEW, NEWREF, NEWSET, SETREF, LINK, BLOCK, RVOCA, RREDI, NOLINK
 - Backfill for forward references

@@ -13,7 +13,7 @@ which were injected by the loader from text adjacency
 This aria closes that gap. When loaded, it provides the
 `AutoNext` relation; the loader, if it sees this symbol,
 adds an `AutoNext` lumen alongside every text-injected Next
-link it creates.
+"link" it creates.
 
 prev --Next--> curr     // interpreter contract (slot 5)
 prev --AutoNext--> curr // marker: loader-injected
@@ -28,8 +28,8 @@ CONSEQUENCES:
 • The interpreter is unaffected. It only reads slot 5.
 
 • A future dataflow walker can identify true control-flow
-dependencies by following only Next lumens and ignoring
-AutoNext lumens. This unlocks parallel execution where
+dependencies by following only Next lumina and ignoring
+AutoNext lumina. This unlocks parallel execution where
 instructions have no actual dependency, only happened
 to sit on consecutive lines.
 
@@ -38,7 +38,7 @@ came from text adjacency, not author intent" — useful for
 debugging unexpected control flow.
 
 • If the aria is removed, the loader stops adding AutoNext
-lumens; nothing else changes. Existing graphs continue to
+lumina; nothing else changes. Existing graphs continue to
 work; only the annotation is missing.
 
 PHILOSOPHY:

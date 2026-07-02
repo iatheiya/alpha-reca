@@ -56,8 +56,8 @@ NEWSET COMMENT_CLOSE "//"
 /   NORMAL + other  → NORMAL  (copy byte to output)
 /   STRING + "      → NORMAL  (copy ")
 /   STRING + other  → STRING  (copy byte)
-   BLOCK  + (close) → NORMAL  (drop both / bytes; next byte processed in NORMAL)
-   BLOCK  + other  → BLOCK   (drop byte)
+   "BLOCK" + (close) → NORMAL  (drop both / bytes; next byte processed in NORMAL)
+   "BLOCK" + other  → BLOCK   (drop byte)
 /   Any    + NUL    → emit NUL, done
 
 / STRIP_COMMENTS is implemented below. Set RA_STRIP_IN/RA_STRIP_OUT and call STRIP_COMMENTS.//
@@ -104,18 +104,20 @@ JEQ SC_N_QTCK SC_BYTE DQUOTE SC_N_TO_STR
 /Check for second slash after slash (block-comment open)
 JEQ SC_N_SLCK SC_BYTE SLASH SC_N_SLASH
 /Ordinary byte: emit, update prev
-ITO SC_N_EMIT    Write El1=SC_OPTR       El2=SC_BYTE
-ITO SC_N_OINC    Add   El1=SC_OPTR       El2=C_1           Exit=SC_OPTR
-ITO SC_N_PREV    Move  El1=SC_BYTE       Exit=SC_PREV
-ITO SC_N_JMP     Jump  Exit=CMT_LOOP
+CHAIN
+    SC_N_EMIT    Write El1=SC_OPTR       El2=SC_BYTE
+    SC_N_OINC    Add   El1=SC_OPTR       El2=C_1           Exit=SC_OPTR
+    SC_N_PREV    Move  El1=SC_BYTE       Exit=SC_PREV
+    SC_N_JMP     Jump  Exit=CMT_LOOP
 /Slash in NORMAL: check if prev was also slash → open comment
 NOLINK
 JEQ SC_N_SLASH SC_PREV SLASH SC_N_OPEN
 /First slash: emit it, save as prev
-ITO SC_N_SL1E    Write El1=SC_OPTR       El2=SC_BYTE
-ITO SC_N_SL1I    Add   El1=SC_OPTR       El2=C_1           Exit=SC_OPTR
-ITO SC_N_SL1P    Move  El1=SC_BYTE       Exit=SC_PREV
-ITO SC_N_SL1J    Jump  Exit=CMT_LOOP
+CHAIN
+    SC_N_SL1E    Write El1=SC_OPTR       El2=SC_BYTE
+    SC_N_SL1I    Add   El1=SC_OPTR       El2=C_1           Exit=SC_OPTR
+    SC_N_SL1P    Move  El1=SC_BYTE       Exit=SC_PREV
+    SC_N_SL1J    Jump  Exit=CMT_LOOP
 /Second slash: open comment — remove the previously emitted slash from output
 NOLINK
 ITO SC_N_OPEN    Sub   El1=SC_OPTR       El2=C_1           Exit=SC_OPTR
@@ -128,7 +130,7 @@ CHAIN
     SC_N_STRE    Write El1=SC_OPTR       El2=SC_BYTE
     SC_N_STRI    Add   El1=SC_OPTR       El2=C_1           Exit=SC_OPTR
     SC_N_STRP    Move  El1=SC_BYTE       Exit=SC_PREV
-        ITO SC_N_STRJMP Jump Exit=CMT_LOOP
+    SC_N_STRJMP  Jump  Exit=CMT_LOOP
 /STRING state
 NOLINK
 JEQ SC_STRING_ST SC_BYTE DQUOTE SC_STR_CLOSE
@@ -141,7 +143,7 @@ CHAIN
     SC_STR_CLOSE Move  El1=SC_ST_NORMAL  Exit=SC_STATE
     SC_STR_CE    Write El1=SC_OPTR       El2=SC_BYTE
     SC_STR_CI    Add   El1=SC_OPTR       El2=C_1           Exit=SC_OPTR
-        ITO SC_STR_CLOSE_LB Jump  Exit=CMT_LOOP
+    SC_STR_CLOSE_LB  Jump  Exit=CMT_LOOP
 /BLOCK state: look for closing double-slash
 NOLINK
 JEQ SC_BLOCK_ST SC_BYTE SLASH SC_BLK_SLASH

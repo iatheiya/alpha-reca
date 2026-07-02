@@ -24,10 +24,10 @@ Two ITO types (6-slot + 7-slot) = branch predictor chaos.
 
 ---
 
-### Inline lumens vs separate luces
+### Inline lumina vs separate luces
 
-Lumens sit inline in the same lux (after pad). In 95–99% of cases there are zero
-extra lumens — the branch predictor learns the pattern, the pipeline flies.
+Lumina sit inline in the same lux (after pad). In 95–99% of cases there are zero
+extra lumina — the branch predictor learns the pattern, the pipeline flies.
 A rare mispredict (10–15 cycles) << constant cache misses from jumping to separate luces
 (200–300 cycles). Inline wins.
 
@@ -118,7 +118,7 @@ and third lux). `AUTOLINK` and `RA_MC_PREV` link **with the external chain**
 ### RRET/RCALL — named luces linked via explicit Next, not RA_MC_PREV
 
 **OBSOLETE — RRET/RCALL have been removed (zero callers; superseded by the
-automatic call stack, see aria/regs.re). Kept for historical reference only.**
+automatic call stack, see registers.re). Kept for historical reference only.**
 
 **Looks like:** does not use WIRE_AUTOLINK.
 **Why not:** Luces MA1..MA5 are linked via `Add MA_X+C_5→slot; Write slot←MA_Y`.
@@ -130,7 +130,7 @@ WIRE_AUTOLINK updates `RA_MC_PREV` — not applicable here. Inline wire stays.
 ### Two-pass scheme in saku.re
 
 **Looks like:** could be single-pass (backfill exists).
-**Why not:** Pass 1 counts the number of LINK lumens per source.
+**Why not:** Pass 1 counts the number of LINK lumina per source.
 This is needed for compact in-place memory allocation — no overallocation.
 Backfill resolves forward references but does not give lumen block size upfront.
 Two passes is an architectural decision, not a mistake.
@@ -148,7 +148,7 @@ not a general number parser. BS_PARSE_INT is universal. Different tasks.
 
 ### parser.re — two-level JT/JTL dispatch instead of hash table
 
-**Looks like:** inconsistency with saku.re/bootstrap.re.
+**Looks like:** inconsistency with saku.re/lexer.re.
 **Why not:** parser.re is a compiler, optimised for speed. JT on first byte +
 JTL on second byte = O(1) dispatch without hash computation. saku.re is a
 runtime loader with lower speed requirements. Different contexts, different
@@ -156,20 +156,20 @@ approaches are justified.
 
 ---
 
-### Three string packing approaches (bootstrap / loader / parser)
+### Three string packing approaches (lexer / loader / parser)
 
 **Looks like:** inconsistency.
-**Why not:** Each level solves its own task — bootstrap: speed without escape,
+**Why not:** Each level solves its own task — lexer.re: speed without escape,
 loader: full string parser with special characters, parser: templating with
 `{name}` placeholders. These are layers, not duplication.
 
 ---
 
-### Stream parsing (bootstrap) vs line buffering (parser)
+### Stream parsing (lexer.re) vs line buffering (parser)
 
 **Looks like:** inconsistency in I/O model.
 **Why not:** parser.re buffers lines for backtracking and contextual analysis
-(LLVM IR rules). bootstrap.re reads a stream for maximum speed.
+(LLVM IR rules). lexer.re reads a stream for maximum speed.
 Different requirements, different solutions.
 
 ---
@@ -286,12 +286,46 @@ in `update_relations` when aether[SYS_*] changes.
 
 ---
 
+### `_resolve()` mints a `C_<N>` register for bare numeric literals instead of returning the literal value (2026-06-19)
+
+**Looks like:** unnecessary indirection — why not just use the literal `0`/`47`/etc.
+directly as the field value?
+**Why not:** every ITO field (`e1`/`e2`/`exit`) is read by the interpreter
+through a dereference (`aether[a1]`, never `a1` itself). A field holding the
+bare value `47` doesn't mean "compare against 47" — it means "compare
+against whatever's stored at address 47". The project's own established
+convention already worked around this by hand for the single most common
+case (`JZ` uses `RA_C0_REF`, the *address* of the `C_0` register, never bare
+`"0"`) — this decision generalises that pattern to `_resolve` itself, so
+every bare-literal operand resolved through it gets the same treatment
+automatically, including ones synthesised by macro expansion (e.g.
+`_expand_indent`'s `SWITCH`-to-`JEQ` lowering) where the literal was never
+written by hand in the first place. Reuses an existing `C_N` constant where
+the project already defines one; otherwise lazily allocates and memoizes a
+dedicated 1-lux register (`self._lit_const_cache`), so repeated uses of the
+same literal share one address. See `BUGS.md`, Session 2026-06-19, section K,
+for the concrete bug this fixed (an infinite loop from `Equal`'s
+truthiness-gated logic treating a *zero address* as "no operand" for the
+literal `0` case specifically).
+
+---
+
 ## Stable Invariants
 
 These are not canon but should not change without deliberate discussion:
 
 - ITO layout: 7 base luces (word, op, e1, e2, exit, next, pad)
-- `BS_HT_MASK = 0x3FFFF` (262144 slots)
+- `BS_HT_MASK = 0x3FFFF` (262144 slots) — **still correct as the slot-index
+  mask** (2026-06-19 session: found and fixed a bug where `lexer.re`'s hash
+  routines were *also* applying this same narrow mask to the hash *value*
+  itself, before it ever reached `HT_LOOKUP`/`HT_INSERT` — that defeated
+  wide-hash collision resolution, since the "distinguishing" stored hash
+  became just as narrow as the slot index. Fixed by keeping the running
+  hash wide (natural 64-bit) until `BS_LOOKUP`/`BS_INTERN`/`BS_INTERN_NAMED`
+  mask it to `MASK_LOW32` — matching `htable.re`'s own documented "hash32"
+  slot format — right before handing it to `RA_HT_HASH`. `BS_HT_MASK`
+  itself, and its use *inside* `HT_LOOKUP`/`HT_INSERT` for slot selection,
+  is unchanged and correct. See `BUGS.md`, Session 2026-06-19, section L.)
 - BLOCK base addresses (`_000`) in htable — LOAD_MAIN resolves them correctly
 - 24 Aspects in `aspects.re` — adding or removing one redefines Reca
 
@@ -308,3 +342,71 @@ No mprotect, no anonymous executable mappings, no JIT spray surface.
 When Yaku generates ARM64 natively (M1), the result is a standard signed binary.
 No LLVM at runtime, no dynamic code generation, no entitlements required.
 The OS sees an interpreter reading numbers. That's all it ever needs to see.
+
+---
+
+## D-WAVE. WAVE — runtime ITO synthesizer (2026-06)
+
+**Problem:** All builder macros (RVOCA, RREDI, CLEAR, NOP, JEQ, JZ, LX, LH, WALK_ONE, LINK_OP, UNLINK_OP, LR, LT, WALK_ITO, ALLOC_TO, RCALL_AT) manually set `RA_MC_OP/E1/E2/DEST/LUX` via 4–6 Move instructions before each `RVOCA WRITE_ITO_SLOTS` call. RCALL_AT alone was 54 lines.
+
+**Decision:** Add `WAVE` as a preprocessor command in `loader.py` that expands to the standard builder sequence. Mirrors `ITO` syntax exactly: `WAVE label Op [El1=X] [El2=Y] [Exit=Z] [At=A] [Next=N] [Reset=1]`.
+
+**Key design points:**
+- `At=` eliminates the first `__LT_ALLOC_ITO` when lux already exists externally
+- `Next=` eliminates manual `Add El1=src El2=SLOT_NEXT + Write slot←dst` link pairs
+- `Reset=1` selects `WRITE_ITO_SLOTS_RESET` for chain terminators
+- All parameters optional — simplest case: `WAVE label Op`
+- Preprocessor (not Reca macro) because Reca can't efficiently pass 5 independent arguments
+
+**Result:** RCALL_AT: 54→14 lines. JEQ: 20→5. ALLOC_TO: 33→6. RVOCA/RREDI/CLEAR/NOP: 10→3 each. Total macros.re: ~400 lines saved.
+
+---
+
+## Will Not Be Implemented
+
+*(Moved from HISTORY.md — these are decisions, not just history.)*
+
+### Lumen without rel (anonymous lumina)
+Without `rel`, multiple lumina on one lux are indistinguishable except by position.
+Positional semantics is equivalent in complexity to explicit rel, but less readable.
+A lumen without rel is indistinguishable from a plain exit at the ITO level.
+The `(rel, exit)` structure is optimal and stays.
+
+A library may still add rel to an existing exit after the fact via Write into Aether.
+The core does not prevent this.
+
+### rbin bootstrap as the primary self-hosting path
+The idea: Python loads `reca.rbin` → registers 24 Aspects → runs LOAD_MAIN.
+LOAD_MAIN rebuilds the graph → saves a new rbin.
+
+Not the primary approach because rbin is fragile under architecture changes.
+If the fundamental structure changes (ITO layout, lux size, lumen format) — the old
+rbin is incompatible with new code. Maintaining a separate old Python loader or
+manually rebuilding rbin is undesirable in active development.
+
+The correct path: Wave-B in Python stays, but gradually transfers to Reca.
+Parts of the Python loader that can live on Reca move there. Not "rbin instead of
+Python" — "Reca gradually takes over from Python".
+
+---
+
+## Completed cleanups (architectural, not bugs)
+
+*(Moved from HISTORY.md "Fixed" section.)*
+
+- `WIRE_AUTOLINK` / `WIRE_AUTOLINK_RESET` — unified wire pattern in RVOCA, RREDI, CLEAR, NOP, RCALL_AT
+- `RCN_IMPL` — shared body for EMIT/EMITI/PUTBYTE
+- `SNL_IMPL` — shared body for SAKU_NEXO_TERM/CMP/ARITH
+- Inline autolink → `Voca AUTOLINK` in 8 places
+- `UNLINK_OP` aligned to named-lux mechanism like LINK_OP
+- `FUNC_ENTRY`/`FUNC_RET` removed (dead code)
+- `RCALL`/`RRET` macros removed (dead code; superseded by automatic call stack)
+- `BS_CS_BUF_000`/`BS_CS_SP` (1024-entry inline call-stack array) removed
+- `WIRE_LUX` removed (unused)
+- 62 `Equal+C_0+JumpIf` patterns → `JZ` in saku.re
+- `PTBUF_000` increased to 256 (matches the C_255 check)
+- Empty `PS_NEXT_SYMBOL` section removed from parser.re
+- Ghost comment `RA_DEST_N` removed from yaku.re
+- 24 of 27 redundant JMP2 jumps removed from saku.re
+- String stride fixed: stride=1 in Python and Reca (was DATA_NODE_MIN=2 mismatch)
+- `HARD_BOTTOM` made dynamic: computed from real `size` in Symphony.__init__

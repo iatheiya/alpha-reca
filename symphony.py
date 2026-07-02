@@ -42,7 +42,7 @@ import array
 import struct
 import sys
 
-# Aether size: default 1M luces. Overridable via Aether(size=N) or K_AETHER_SIZE in layout.re.
+# Aether size: default 2M luces. Overridable via Aether(size=N) or K_AETHER_SIZE in layout.re.
 # Single source of truth is aria/layout.re K_AETHER_SIZE. This default is a fallback only.
 AETHER_SIZE = 1 << 21  # 2M luces — enough with named-only packing
 
@@ -60,7 +60,7 @@ _MASK64 = (1 << XLEN) - 1
 #
 # ITO lux (compact fixed-slot layout, ITO_SIZE=7 base luces):
 #   [0]=word(self-ref)  [1]=op  [2]=e1  [3]=e2  [4]=exit  [5]=next  [6]=pad
-#   Extra LINK lumens append after slot 6 as (rel,tgt) pairs, 0-terminated.
+#   Extra LINK lumina append after slot 6 as (rel,tgt) pairs, 0-terminated.
 #
 # SLOT_NEXT — three execution paths:
 #   line: SLOT_NEXT == 0               → next_pc = pc + ITO_SIZE  (sequential, prefetcher-friendly)
@@ -76,7 +76,7 @@ _MASK64 = (1 << XLEN) - 1
 SLOT_WORD  = 0  # word (self-ref for ITO, value for Data)
 # ITO compact layout — no rel slots, values only:
 #   [0]=word  [1]=op  [2]=e1  [3]=e2  [4]=exit  [5]=next  [6]=pad  [7+]=extra LINK lumen  [...] 0
-# Extra LINK lumens start at slot ITO_SIZE (=7).
+# Extra LINK lumina start at slot ITO_SIZE (=7).
 # Data luces: [word, rel0, tgt0, rel1, tgt1, ..., 0] — lumen pairs scanned to 0.
 # ITO and Data have distinct layouts — honest separation, no false homogeneity.
 SLOT_OP    = 1  # op primitive (dispatch key)
@@ -99,7 +99,7 @@ STACK_BOTTOM  = AETHER_SIZE - STACK_SIZE  # guard: SP must not go below this
 # Flux zone — lives between bump region and call stack, grows upward.
 # Flux luces have arbitrary structure described by a type lux (Data Lux).
 # Detected by: addr >= FLUX_BOTTOM (one compare, only on explicit jump).
-# Hot path (fall-through, raw==0) never checks this — zero overhead.
+# Line path (fall-through, raw==0) never checks this — zero overhead.
 # Current: simple bump allocator. Future: free-list for fragmentation.
 FLUX_SIZE     = 1 << 16          # 64K luces — room for ~8K typical flux luces
 FLUX_BOTTOM   = STACK_BOTTOM - FLUX_SIZE   # = 1966080; flux zone starts here

@@ -5,7 +5,7 @@ SCAN_ALL_LUX body convention:
 Normal return: Redi (RA_SCAN_STOP = 0, scanner continues)
 Early exit:    Move C_1 → RA_SCAN_STOP; Redi (scanner sees stop flag → done)
 
-DEPENDENCY: aspects.re, core/constants.re, runtime/regs.re,
+DEPENDENCY: aspects.re, core/constants.re, runtime/registers.re,
 aria/accord.re, aria/symphony.re, aria/output.re//
 ============================================================
 
@@ -28,22 +28,22 @@ RREDI LA_DONE_r
 
 ── LIMITER_CHECK ─────────────────────────────────────────────
 /Non-leaf — RA_LINK is saved/restored automatically by the call stack.
-NOLINK
-ITO LIMITER_CHECK Move    El1=SF_LIMITER_HDR Exit=RA_TW_LUX
-RVOCA LIM_HDR_R EMIT_STR_ENTRY
-CLEAR LIM_STARTSCAN RA_TMP3
-ITO LIM_SETBODY   Move    El1=LIM_BODY  Exit=RA_SCAN_BODY
-RVOCA LIM_SCANJ SCAN_ALL_LUX
-ITO LIM_REPORT    Move    El1=SF_LIMITER_BARE Exit=RA_TW_LUX
-RVOCA LIM_RPT_R EMIT_STR_ENTRY
-ITO LIM_RPT_NUM   Move    El1=RA_TMP3   Exit=RA_TMP2
-RVOCA LIM_NUM_R EMIT_INT_ENTRY
-ITO LIM_RPT_NL    Move    El1=NL_STR Exit=RA_TW_LUX
-RVOCA LIM_NL_R EMIT_STR_ENTRY
+CHAIN LIMITER_CHECK
+    Move    El1=SF_LIMITER_HDR Exit=RA_TW_LUX
+        RVOCA LIM_HDR_R EMIT_STR_ENTRY
+    Move    El1=C_0             Exit=RA_TMP3
+    Move    El1=LIM_BODY        Exit=RA_SCAN_BODY
+        RVOCA LIM_SCANJ SCAN_ALL_LUX
+    Move    El1=SF_LIMITER_BARE Exit=RA_TW_LUX
+        RVOCA LIM_RPT_R EMIT_STR_ENTRY
+    Move    El1=RA_TMP3         Exit=RA_TMP2
+        RVOCA LIM_NUM_R EMIT_INT_ENTRY
+    Move    El1=NL_STR Exit=RA_TW_LUX
+        RVOCA LIM_NL_R EMIT_STR_ENTRY
 RREDI LIM_DONE_r
 
 ── LIM_BODY ──────────────────────────────────────────────────
-/After LH, RA_SR_REL holds the first relation value (0 = no lumens).
+/After LH, RA_SR_REL holds the first relation value (0 = no lumina).
 NOLINK
 LH LIM_BODY RA_I RA_TMP
 JZ LIM_HAS_LUM RA_SR_REL LIM_BARE

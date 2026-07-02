@@ -19,7 +19,7 @@ This document describes the chosen model for the Canon Aria and Python bootstrap
 
 `*_OUTER` slots (function-private RA_LINK save locations) are **no longer used**.
 RA_LINK is saved/restored automatically by the call stack (`RA_SP`) on every
-`Voca`/`Redi` — see `aria/regs.re`. Non-leaf subroutines need no special
+`Voca`/`Redi` — see `registers.re`. Non-leaf subroutines need no special
 bookkeeping.
 
 ---
@@ -39,14 +39,14 @@ bookkeeping.
 ## Lumen Scanning
 
 ```re
-// Scan a Data lux (lumens at offset=1):
+// Scan a Data lux (lumina at offset=1):
 WALK_ONE name  RA_LUX_REG  Entry     // RA_SR_OUT = exit lux where rel=Entry
 
-// Scan an ITO lux (extra lumens at offset=ITO_SIZE=7):
+// Scan an ITO lux (extra lumina at offset=ITO_SIZE=7):
 WALK_ITO name  RA_ITO_REG  Op        // RA_SR_OUT = exit lux where rel=Op
 ```
 
-Use `WALK_ITO` when RA_LUX holds an ITO lux with extra LINK lumens.
+Use `WALK_ITO` when RA_LUX holds an ITO lux with extra LINK lumina.
 Use `WALK_ONE` for Data luces.
 
 ---
@@ -71,7 +71,7 @@ ITO C  Jump ...          // C.next = 0
 - **ITO_REGISTRY** — all ITO luces. Scanned by EMIT_FUNC (compiler BFS).
 
 An ITO lux that is also an entry point (has `LINK X Entry Yaku`) appears in **both**
-registries. Use `WALK_ITO` to read its extra LINK lumens.
+registries. Use `WALK_ITO` to read its extra LINK lumina.
 
 ---
 
@@ -107,3 +107,25 @@ The block closes at the first `//` encountered — anywhere on the line.
 - Inline `/` in the middle of a line does not open a single-line comment:
   `OK /no OK` — `/no` is treated as an unknown command (skipped), but the parser still sees it.
 - `///` and longer — **not** the same as `//`. Exactly two slashes, not three or more.
+
+### Command-like words inside prose: quote them
+
+`check_comments.py` flags any comment line whose first word matches a real
+command/macro name (`ITO`, `NEW`, `SET`, `FOR`, `LINK`, ...) — this is how
+it catches a missing closing `//` swallowing real code. But documentation
+prose legitimately starts sentences with these words sometimes ("Set via
+Move before Exire...", or showing example syntax like "NEW MyNote"). Wrap
+the word in quotes to silence the false positive without weakening the
+check elsewhere:
+
+```
+/"NEW" MyNote                              ← was: NEW MyNote
+/"Set" via Move before Exire; ...          ← was: Set via Move before Exire; ...
+/"For" each lux with Entry→Yaku, ...       ← was: For each lux with Entry→Yaku, ...
+```
+
+The quoting is purely textual (breaks `text.split()[0] == 'NEW'`), it
+doesn't change what the comment says. Every flagged line found so far has
+been individually verified safe (read the surrounding `//` block, confirm
+it's actually closed) before quoting — don't quote a flagged line on
+sight without checking it first; the check exists to catch real bugs too.

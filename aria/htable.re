@@ -1,4 +1,4 @@
-============================================================
+/============================================================
 //aria/htable.re — Generic Hash Table
 
 Probe-based hash table over Reca Lux.
@@ -14,7 +14,6 @@ HT_CLEAR:   IN: RA_HT_BASE, RA_HT_SIZE
 
 DEPENDENCY: aspects.re  core/constants.re (C_0, C_1, C_32)
 aria/math.re (MASK_LOW32)//
-============================================================
 
 NEW RA_HT_BASE
 NEW RA_HT_HASH

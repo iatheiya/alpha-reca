@@ -178,12 +178,18 @@ class Interpreter:
         # lower them. A native binary never needs these — the compiler emits
         # native instructions directly. NOT aspects. NOT part of the Reca ISA.
         _derived = {
-            "Move":    self._move,      # Add(src, C_0, tgt)
-            "Jump":    self._jump,      # JumpIf(C_1, dest)
-            "Not":     self._not,       # Xor(a, -1)
-            "Greater": self._cmpgt,     # Less(b, a) — swapped els
-            "Load":    self._read,      # alias Read
-            "Store":   self._write,     # alias Write
+            "Move":              self._move,      # Add(src, C_0, tgt)
+            "Jump":              self._jump,      # JumpIf(C_1, dest)
+            "Not":               self._not,       # Xor(a, -1)
+            "Greater":           self._cmpgt,     # Less(b, a) — swapped els
+            "UGreater":          self._cmpgtu,    # ULess(b, a) — swapped els
+            "NotEqual":          self._cmpne,     # not Equal(a, b)
+            "LessOrEqual":       self._cmple,     # not Less(b, a)
+            "ULessOrEqual":      self._cmpleu,    # not ULess(b, a)
+            "GreaterOrEqual":    self._cmpge,     # not Less(a, b)
+            "UGreaterOrEqual":   self._cmpgeu,    # not ULess(a, b)
+            "Load":              self._read,      # alias Read
+            "Store":             self._write,     # alias Write
         }
 
         self._dispatch = {}
@@ -641,6 +647,30 @@ class Interpreter:
 
     def _cmpgt(self, a1, a2, exit, nxt, aether):
         if exit: aether[exit] = 1 if (a1 and a2 and _s64(aether[a1]) > _s64(aether[a2])) else 0
+        return nxt
+
+    def _cmpgtu(self, a1, a2, exit, nxt, aether):
+        if exit: aether[exit] = 1 if (a1 and a2 and _u64(aether[a1]) > _u64(aether[a2])) else 0
+        return nxt
+
+    def _cmpne(self, a1, a2, exit, nxt, aether):
+        if exit: aether[exit] = 1 if (a1 and a2 and aether[a1] != aether[a2]) else 0
+        return nxt
+
+    def _cmple(self, a1, a2, exit, nxt, aether):
+        if exit: aether[exit] = 1 if (a1 and a2 and _s64(aether[a1]) <= _s64(aether[a2])) else 0
+        return nxt
+
+    def _cmpleu(self, a1, a2, exit, nxt, aether):
+        if exit: aether[exit] = 1 if (a1 and a2 and _u64(aether[a1]) <= _u64(aether[a2])) else 0
+        return nxt
+
+    def _cmpge(self, a1, a2, exit, nxt, aether):
+        if exit: aether[exit] = 1 if (a1 and a2 and _s64(aether[a1]) >= _s64(aether[a2])) else 0
+        return nxt
+
+    def _cmpgeu(self, a1, a2, exit, nxt, aether):
+        if exit: aether[exit] = 1 if (a1 and a2 and _u64(aether[a1]) >= _u64(aether[a2])) else 0
         return nxt
 
     def _jumpif(self, a1, a2, exit, nxt, aether):

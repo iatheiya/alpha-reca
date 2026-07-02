@@ -10,7 +10,7 @@ shioreru.re and other places that check whether tracing was active.
 It is NEVER used as Op= in any instruction.
 
 DEPENDENCY: aspects.re, core/constants.re, runtime/layout.re,
-runtime/regs.re, aria/output.re, aria/ascii.re//
+runtime/registers.re, aria/output.re, aria/ascii.re//
 
 BLOCK IRIS_BUF 4096
 

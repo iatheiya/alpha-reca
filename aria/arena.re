@@ -6,7 +6,7 @@
 /it. Luces allocated inside become unreachable (overwritten by future
 /allocs). This is "deactivation by losing connectivity."
 
-/NESTING: fully supported via the automatic call stack (RA_SP, see regs.re).
+/NESTING: fully supported via the automatic call stack (RA_SP, see registers.re).
 /Each ARENA_OPEN saves cursor into the caller's frame at RA_SP+2
 /(slot 0 = saved RA_LINK, written by Voca; slot 1 = reserved; slot 2 = arena mark).
 /ARENA_CLOSE restores from RA_SP+2. No separate arena stack needed.
@@ -25,7 +25,7 @@
 /inside a function that was itself entered via RVOCA (so RA_SP points
 /at a live frame).
 
-/DEPENDENCY: aspects.re  constants.re  regs.re  alloc.re  callstack.re//
+/DEPENDENCY: aspects.re  constants.re  registers.re  alloc.re  callstack.re//
 
 /── ARENA_MARK: compute addr of arena mark in caller's frame (RA_SP + 2) ──────
 /Used by ARENA_OPEN, ARENA_CLOSE, ARENA_SIZE. Leaf.//

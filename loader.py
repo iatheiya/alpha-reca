@@ -15,15 +15,15 @@ LUX MODEL:
     slot 4  = exit  (destination: store target for Move/ALU, jump target for Jump/JumpIf,
                      RA_LINK address for Voca)
     slot 5  = next  (SLOT_NEXT: 0 = implicit fall-through pc+ITO_SIZE; !0 = explicit link)
-    slot 6  = pad   (zeroed — terminates lumen scan before extra lumens)
-    slot 7+ = extra LINK lumens as (rel_addr, tgt_addr) pairs, 0-terminated
+    slot 6  = pad   (zeroed — terminates lumen scan before extra lumina)
+    slot 7+ = extra LINK lumina as (rel_addr, tgt_addr) pairs, 0-terminated
 
   Data luces — arbitrary lumen pairs:
     slot 0  = word  (value)
     slot 1+ = lumen pairs (rel_addr, tgt_addr), 0-terminated
 
   ITO and Data luces are distinguished by Op (slot 1): nonzero = ITO, zero = Data.
-  Extra lumens on ITO luces start at slot 7 (ITO_SIZE), appended by LINK commands.
+  Extra lumina on ITO luces start at slot 7 (ITO_SIZE), appended by LINK commands.
 
 GLOBAL LUMEN PREPASS:
   Before any allocation, all .re files are scanned for:
@@ -60,7 +60,7 @@ _TERMINATORS = frozenset({"Jump", "JumpReg", "End", "Redi"})
 # Bootstrap primitives — the irreducible minimum Python handles directly.
 # Everything else is a Reca macro: loader looks up {CMD}_MACRO in symbols and calls it.
 _BOOTSTRAP_CMDS = frozenset({
-    "NEW", "SET", "LINK", "NEWREF", "NEWSET", "SETREF",
+    "NEW", "SET", "LINK", "NEWREF", "NEWSET", "SETREF", "ALIAS",
     "ITO", "BLOCK", "NOLINK",
 })
 
@@ -69,9 +69,11 @@ _BOOTSTRAP_CMDS = frozenset({
 
 
 def _decode_string_word(aether, head_addr: int, max_chars: int = 256) -> str:
-    """Decode a byte-chain back into a Python string.
+    """Decode a packed byte-chain back into a Python string.
 
-    Walks 2-lux slots, takes the word of each, stops at the NUL byte.
+    Walks consecutive luces (stride=1, 8 bytes per lux, little-endian).
+    Stops at the first lux whose word is 0 (NUL terminator lux) or at
+    the first NUL byte within a word.
     to_bytes is faster than per-byte shifts.
     """
     if not head_addr:
@@ -104,7 +106,7 @@ def _decode_string_word(aether, head_addr: int, max_chars: int = 256) -> str:
 #                  data = (reg, counter_base) where reg is the register to compare against
 #                  Handled specially in _read_re_file (not via simple string substitution).
 # mode='save'    — indented lines are the body; on close, restore-ITO lines are injected.
-#                  data = (regs_to_restore, noralink_flag)
+#                  data = regs_to_restore (RA_LINK is never in this list — see SAVE handling)
 #                  Handled specially in _read_re_file.
 # mode='chain'   — indented lines are <name> <rel> <val> triplets; on close, emits a
 #                  chain of ITO+LINK pairs for each triplet.
@@ -118,6 +120,20 @@ _INDENT_LEADERS: dict = {
     "NEWSET":          ('prepend', 1),
     "BLOCK":           ('prepend', 1),
 }
+
+# Special-opener tokens: first token of any line that opens a new indented
+# context (pushes onto _ctx_stack or has its own dedicated dispatch path).
+# Lines starting with these MUST NOT be swallowed by rel>0 raw passthrough
+# inside CHAIN bodies -- they need to go through the main dispatch
+# loop so they're correctly recognized and expanded regardless of where
+# they appear in the source.
+_SPECIAL_OPENERS: frozenset = frozenset({
+    'SWITCH', 'CHAIN', 'SAVE', 'FOR', 'WAVE',
+    'WRITE_OUT', 'READ_BODY',
+})
+
+
+_strip_comments_cache: dict = {}  # (filepath, mtime) -> stripped result
 
 
 def _strip_comments(raw_lines: list) -> list:
@@ -138,19 +154,20 @@ def _strip_comments(raw_lines: list) -> list:
     in_block = False
     for lineno, raw in enumerate(raw_lines, 1):
         line = raw.rstrip('\n')
-        is_indented = bool(line) and line[0] in (' ', '\t')
+        n = len(line)
+        is_indented = n > 0 and line[0] in (' ', '\t')
         stripped_line = line.lstrip()
 
         # Whole-line single-slash comment: starts with / but NOT //
         # Do NOT scan for // inside — avoids false block opens.
-        if not in_block and stripped_line.startswith('/') and not stripped_line.startswith('//'):
+        if not in_block and stripped_line and stripped_line[0] == '/' and (len(stripped_line) < 2 or stripped_line[1] != '/'):
             result.append((lineno, line, is_indented, ''))
             continue
 
         out = []
         in_str = False
         i = 0
-        while i < len(line):
+        while i < n:
             ch = line[i]
             if in_str:
                 out.append(ch)
@@ -158,9 +175,9 @@ def _strip_comments(raw_lines: list) -> list:
                     in_str = False
                 i += 1
             elif in_block:
-                if (ch == '/' and i + 1 < len(line) and line[i+1] == '/'
+                if (ch == '/' and i + 1 < n and line[i+1] == '/'
                         and (i == 0 or line[i-1] != '/')
-                        and (i + 2 >= len(line) or line[i+2] != '/')):
+                        and (i + 2 >= n or line[i+2] != '/')):
                     in_block = False
                     break
                 else:
@@ -170,9 +187,9 @@ def _strip_comments(raw_lines: list) -> list:
                     in_str = True
                     out.append(ch)
                     i += 1
-                elif (ch == '/' and i + 1 < len(line) and line[i+1] == '/'
+                elif (ch == '/' and i + 1 < n and line[i+1] == '/'
                       and (i == 0 or line[i-1] != '/')
-                      and (i + 2 >= len(line) or line[i+2] != '/')):
+                      and (i + 2 >= n or line[i+2] != '/')):
                     in_block = True
                     i += 2
                 else:
@@ -197,12 +214,11 @@ def _expand_indent(stripped_lines: list, loader) -> list:
       rel == 0  → new item at this context's level
       rel >  0  → sub-item (belongs to previous item)
 
-    This means NOITO/CHAIN work correctly inside SAVE/FUNC blocks.
+    This means CHAIN works correctly inside SAVE/FUNC blocks.
     """
     result = []
     _ctx_stack: list = []
     _pending_restore: list = []
-    _pending_noralink: bool = False
     _pending_norestore: bool = False
 
     def _flush_restore():
@@ -222,8 +238,113 @@ def _expand_indent(stripped_lines: list, loader) -> list:
         mode = ctx['mode']
         if mode == 'save':
             _flush_restore()
+        elif mode == 'for':
+            result.extend(_for_expand(ctx))
 
-    # ── Unified name-mode helpers (used by NOITO, CHAIN, SWITCH) ─────────────
+    # ── FOR v2: header/override parsing and expansion ────────────────────────
+    def _for_parse_header(tokens):
+        """Parse a FOR header's token list into a flat slot list:
+        [(position, name_or_None), ...], 0-indexed. A purely-numeric token
+        is a count block (N consecutive anonymous slots); any other token
+        is one named slot. Every slot -- named or anonymous -- consumes one
+        position in a single running count (a name is an alias for its
+        position, not a separate addressing system)."""
+        slots = []
+        pos = 0
+        for tok in tokens:
+            if tok.isdigit():
+                for _ in range(int(tok)):
+                    slots.append((pos, None))
+                    pos += 1
+            else:
+                slots.append((pos, tok))
+                pos += 1
+        return slots
+
+    def _for_parse_selector_token(tok, by_name, total):
+        """Return (set_of_positions, specificity) for one selector token.
+        specificity: 0=name, 1=position/range. Raises ValueError if the
+        token resolves to nothing -- loud failure, not a silent no-op."""
+        if tok in by_name:
+            return {by_name[tok]}, 0
+        if '-' in tok:
+            lo_s, _, hi_s = tok.partition('-')
+            if lo_s.isdigit() and hi_s.isdigit():
+                lo, hi = int(lo_s), int(hi_s)
+                if lo > hi or lo < 0 or hi >= total:
+                    raise ValueError(
+                        f"FOR override: range '{tok}' out of bounds (0-{total-1})")
+                return set(range(lo, hi + 1)), 1
+        if tok.isdigit():
+            p = int(tok)
+            if p < 0 or p >= total:
+                raise ValueError(
+                    f"FOR override: position '{tok}' out of bounds (0-{total-1})")
+            return {p}, 1
+        raise ValueError(
+            f"FOR override: '{tok}' is not a known element name or position in this FOR")
+
+    def _for_parse_override_line(line, slots, order_idx):
+        """Parse one override-block line into a list of
+        (position, specificity, kv_dict, order_idx) entries -- one per
+        slot the line's selector(s) resolve to, each carrying the line's
+        key=value pairs. A line with no selector before '>' is a default:
+        applies to every slot, at the lowest specificity (always beaten by
+        a more specific line for the same slot/key)."""
+        if '>' not in line:
+            raise ValueError(f"FOR override line missing '>': {line!r}")
+        sel_part, _, kv_part = line.partition('>')
+        kv = {}
+        for pair in kv_part.split():
+            if '=' not in pair:
+                raise ValueError(f"FOR override: bad key=value token {pair!r}")
+            k, v = pair.split('=', 1)
+            kv[k] = v
+        sel_toks = sel_part.split()
+        total = len(slots)
+        if not sel_toks:
+            return [(p, 2, kv, order_idx) for p, _name in slots]
+        by_name = {name: p for p, name in slots if name is not None}
+        entries = []
+        for tok in sel_toks:
+            positions, specificity = _for_parse_selector_token(tok, by_name, total)
+            for p in positions:
+                entries.append((p, specificity, kv, order_idx))
+        return entries
+
+    def _for_expand(ctx):
+        """Expand a closed FOR context into final (lineno, text) pairs,
+        applying the override hierarchy: most specific selector wins
+        (name > position/range > default), tie-broken by last-in-text for
+        equal specificity. A placeholder with no resolved value anywhere
+        (no override, no default) is left as literal text in the output
+        -- not substituted with an empty string -- so a forgotten value
+        surfaces as a distinctive, traceable token instead of silently
+        becoming a malformed but textually-unremarkable line."""
+        slots = ctx['slots']
+        all_entries = []
+        for idx, (_lineno, line) in enumerate(ctx['override_lines']):
+            all_entries.extend(_for_parse_override_line(line, slots, idx))
+
+        out = []
+        for pos, name in slots:
+            known = {'N': str(pos)}
+            if name is not None:
+                known['X'] = name
+            keys_here = {k for p, _s, kv, _o in all_entries if p == pos for k in kv}
+            for key in keys_here:
+                candidates = [(spec, oidx, kv[key]) for p, spec, kv, oidx in all_entries
+                              if p == pos and key in kv]
+                candidates.sort(key=lambda c: (c[0], -c[1]))
+                known[key] = candidates[0][2]
+            for lineno, body_line in ctx['body_lines']:
+                expanded = body_line
+                for key, val in known.items():
+                    expanded = expanded.replace('{' + key + '}', val)
+                out.append((lineno, expanded))
+        return out
+
+    # ── Unified name-mode helpers (used by CHAIN, SWITCH) ─────────────
     def _parse_iris_mode(tokens, macro_idx):
         """Return (block_name, anon).
         block_name=None, anon=False → manual (explicit names in body)
@@ -238,7 +359,15 @@ def _expand_indent(stripped_lines: list, loader) -> list:
         return name, False
 
     def _auto_name(block_name, anon, prefix, idx, line_stripped):
-        """Build the ITO line for a body entry in auto-name mode."""
+        """Build the ITO line for a body entry in auto-name mode.
+
+        Naming convention: bare `block_name` is item 0 (no suffix at
+        all); item 1 onward is `block_name` + index, no separator
+        (`NAME1`, `NAME2`, ...). Matches the `{Y}`/`{Y1}`/`{Y2}`
+        convention already established for FOR's override placeholders
+        -- these are purely internal, arbitrary generated identifiers
+        with no external convention to clash with.
+        """
         if anon:
             return f'ITO __{prefix}_{idx} {line_stripped}'
         elif block_name is None:
@@ -247,12 +376,13 @@ def _expand_indent(stripped_lines: list, loader) -> list:
             parts = line_stripped.split(None, 1)
             first_tok = parts[0]
             rest = parts[1] if len(parts) > 1 else ''
+            suffix = '' if idx == 0 else str(idx)
             if first_tok.startswith('_') and len(first_tok) > 1:
-                # _SUFFIX → IRIS_SUFFIX_N
-                lux_name = f'{block_name}_{first_tok[1:]}_{idx}'
+                # _SUFFIX → NAME_SUFFIX (idx 0) / NAME_SUFFIX_{idx} (idx>0)
+                lux_name = f'{block_name}_{first_tok[1:]}{"" if idx == 0 else f"_{idx}"}'
             else:
-                # no underscore → IRIS_N, first_tok is the op
-                lux_name = f'{block_name}_{idx}'
+                # no underscore → NAME / NAME{idx}, first_tok is the op
+                lux_name = f'{block_name}{suffix}'
                 rest = f'{first_tok} {rest}'.strip()
             return f'ITO {lux_name} {rest}'
 
@@ -283,30 +413,39 @@ def _expand_indent(stripped_lines: list, loader) -> list:
             if body_base is not None:
                 rel = cur_indent - body_base  # 0=item, >0=sub-item
 
-                if mode == 'noito':
-                    block_name = ctx.get('block_name')
-                    anon       = ctx.get('anon', False)
-                    idx        = ctx.get('idx', 0)
-                    if rel > 0:
-                        # Sub-lux: pass through unchanged
-                        result.append((lineno, stripped))
-                    else:
-                        # New independent lux: NOLINK + ITO
-                        result.append((lineno, 'NOLINK'))
-                        result.append((lineno, _auto_name(block_name, anon, 'ni', idx, stripped)))
-                        ctx['idx'] = idx + 1
-                    continue
-
                 if mode == 'chain':
                     if rel > 0:
-                        result.append((lineno, stripped))
+                        first_tok = stripped.split(None, 1)[0].upper() if stripped else ''
+                        if first_tok not in _SPECIAL_OPENERS:
+                            result.append((lineno, stripped))
+                            continue
+                        # Special opener: fall through to main dispatch below.
+                    else:
+                        block_name = ctx['block_name']
+                        anon       = ctx['anon']
+                        idx        = ctx['idx']
+                        per_item_nolink = ctx['per_item_nolink']
+                        body_line = stripped
+                        btoks = body_line.split(None, 1)
+                        link_to_prev = bool(btoks) and btoks[0] == '-'
+                        if link_to_prev:
+                            if not per_item_nolink:
+                                raise ValueError(
+                                    f"CHAIN: '-' marker used at line {lineno} but "
+                                    f"this block has no NOLINK modifier active -- "
+                                    f"items already auto-link by default, so '-' "
+                                    f"has nothing to override.")
+                            body_line = btoks[1] if len(btoks) > 1 else ''
+                        if per_item_nolink and not link_to_prev:
+                            result.append((lineno, 'NOLINK'))
+                        generated = _auto_name(block_name, anon, 'ch', idx, body_line)
+                        result.append((lineno, generated))
+                        if idx == 0 and ctx['own_name'] and anon and not ctx['aliased']:
+                            gen_name = generated.split(None, 2)[1]
+                            result.append((lineno, f'ALIAS {ctx["own_name"]} {gen_name}'))
+                            ctx['aliased'] = True
+                        ctx['idx'] = idx + 1
                         continue
-                    block_name = ctx['block_name']
-                    anon       = ctx['anon']
-                    idx        = ctx['idx']
-                    result.append((lineno, _auto_name(block_name, anon, 'ch', idx, stripped)))
-                    ctx['idx'] += 1
-                    continue
 
                 if mode == 'prepend':
                     parts = stripped.split(None, 1)
@@ -316,11 +455,13 @@ def _expand_indent(stripped_lines: list, loader) -> list:
                     continue
 
                 if mode == 'for':
-                    # FOR elem0 elem1 elem2 / body with {N}=index {X}=element
-                    elements = ctx['elements']
-                    for idx, elem in enumerate(elements):
-                        expanded = stripped.replace('{N}', str(idx)).replace('{X}', elem)
-                        result.append((lineno, expanded))
+                    # Collect; actual expansion happens in _close_ctx via
+                    # _for_expand, since override lines (rel>0) are only
+                    # fully known once the whole FOR block has been read.
+                    if rel > 0:
+                        ctx['override_lines'].append((lineno, stripped))
+                    else:
+                        ctx['body_lines'].append((lineno, stripped))
                     continue
 
                 if mode == 'switch':
@@ -342,7 +483,7 @@ def _expand_indent(stripped_lines: list, loader) -> list:
                         else:
                             n = loader._switch_counter; loader._switch_counter += 1
                             jeq_name = f'__sw_{n}'
-                        result.append((lineno, f'JEQ {jeq_name} {reg} {val} {dest} {jeq_name}_J {jeq_name}_K'))
+                        result.append((lineno, f'JEQ {jeq_name} {reg} {val} {dest}'))
                         ctx['idx'] = idx + 1
                         idx += 1
                     continue
@@ -355,15 +496,21 @@ def _expand_indent(stripped_lines: list, loader) -> list:
         first = toks[0].upper() if toks else ''
 
         if first == 'ALLOC_RAW' and len(toks) >= 3:
-            size_sym, target = toks[1], toks[2]
+            if len(toks) >= 4:
+                # ALLOC_RAW name size target -- caller wants the first
+                # generated instruction to be a specific, real jump target
+                # (e.g. needs to be addressable from elsewhere) instead of
+                # an anonymous __ar_N. Mirrors SAVE's entry_name.
+                first_name, size_sym, target = toks[1], toks[2], toks[3]
+            else:
+                first_name, size_sym, target = None, toks[1], toks[2]
             n = loader._alloc_counter; loader._alloc_counter += 1
-            result.append((lineno, f'ITO __ar_{n}   Move El1={size_sym} Exit=RA_ALLOC_COUNT'))
+            ito_name = first_name if first_name else f'__ar_{n}'
+            result.append((lineno, f'ITO {ito_name}   Move El1={size_sym} Exit=RA_ALLOC_COUNT'))
             result.append((lineno, f'RVOCA __ar_{n}_j ALLOC_RAW'))
             result.append((lineno, f'ITO __ar_{n}_k Move El1=RA_ALLOC_RESULT Exit={target}'))
             continue
 
-        if first == 'NORALINK':
-            _pending_noralink = True; continue
         if first == 'NORESTORE':
             _pending_norestore = True; continue
 
@@ -379,30 +526,60 @@ def _expand_indent(stripped_lines: list, loader) -> list:
                                'opener_indent': cur_indent, 'body_base': None})
             continue
 
-        if first == 'NOITO':
-            block_name, anon = _parse_iris_mode(toks, 1)
-            _ctx_stack.append({'mode': 'noito',
-                               'block_name': block_name, 'anon': anon, 'idx': 0,
-                               'opener_indent': cur_indent, 'body_base': None})
-            continue
-
         if first == 'CHAIN':
+            # CHAIN [name-form] | [modifier modifier ...]
+            # name-form (NAME / _ / absent) before '|', exactly as before;
+            # modifiers after '|', space-separated, order-independent.
+            rest_toks = toks[1:]
+            if '|' in rest_toks:
+                pipe_idx = rest_toks.index('|')
+                name_toks = rest_toks[:pipe_idx]
+                modifiers = set(t.upper() for t in rest_toks[pipe_idx + 1:])
+            else:
+                name_toks = rest_toks
+                modifiers = set()
+            block_name, anon = _parse_iris_mode(name_toks, 0)
+            own_name = block_name  # preserved even if ANON clears block_name
+                                    # below, for the NAME | ANON alias case
+            if 'ANON' in modifiers:
+                anon = True
+                block_name = None
             result.append((lineno, 'NOLINK'))
-            block_name, anon = _parse_iris_mode(toks, 1)
             _ctx_stack.append({'mode': 'chain', 'block_name': block_name,
                                'anon': anon, 'idx': 0,
+                               'own_name': own_name,
+                               'per_item_nolink': 'NOLINK' in modifiers,
+                               'aliased': False,
                                'opener_indent': cur_indent, 'body_base': None})
             continue
 
         if first == 'SAVE' and len(toks) >= 2:
             reg_tokens = toks[1:]
-            noralink  = _pending_noralink;  _pending_noralink  = False
             norestore = _pending_norestore; _pending_norestore = False
             entry_name = None
             if reg_tokens and not any(reg_tokens[0].startswith(p) for p in _REG_PREFIXES):
                 entry_name, reg_tokens = reg_tokens[0], reg_tokens[1:]
-            regs = reg_tokens
-            if not regs: continue
+            # RA_LINK is preserved automatically by the call stack (Voca/Redi
+            # push/pop on RA_SP) -- it is never a valid manual-save target.
+            # Strip it unconditionally rather than relying on callers to omit
+            # it correctly.
+            regs = [r for r in reg_tokens if r != 'RA_LINK']
+            if not regs:
+                # Nothing left to save. SAVE's only remaining "value" would be
+                # naming the entry point -- but that's better done directly on
+                # the body's own first real instruction (zero extra
+                # instructions, no indirection) than via a synthetic
+                # placeholder here. Fail loudly rather than silently
+                # inventing one: fix it at the source, the same way
+                # RTB_LUX_BODY/P0_COLLECT_BODY/PRELOAD_ARG were fixed.
+                if entry_name:
+                    raise ValueError(
+                        f"line {lineno}: 'SAVE {entry_name}' has no registers "
+                        f"left to save (RA_LINK doesn't count -- the call "
+                        f"stack already covers it). Name the body's own "
+                        f"first real instruction '{entry_name}' directly "
+                        f"instead of wrapping it in SAVE.")
+                continue
             for reg in regs:
                 result.append((lineno, f'NEW S_{reg}'))
             for i, reg in enumerate(regs):
@@ -410,8 +587,7 @@ def _expand_indent(stripped_lines: list, loader) -> list:
                 ito_name = entry_name if (i == 0 and entry_name) else f'__sv_{n}'
                 result.append((lineno, f'ITO {ito_name} Move El1={reg} Exit=S_{reg}'))
             if not norestore:
-                restore_regs = regs if not noralink else [r for r in regs if r != 'RA_LINK']
-                for reg in restore_regs:
+                for reg in regs:
                     n = loader._alloc_counter; loader._alloc_counter += 1
                     _pending_restore.append((lineno, f'ITO __sv_{n} Move El1=S_{reg} Exit={reg}'))
             _ctx_stack.append({'mode': 'save', 'regs': regs,
@@ -437,9 +613,12 @@ def _expand_indent(stripped_lines: list, loader) -> list:
         result.append((lineno, stripped))
 
         # FOR elem0 elem1 ... — iteration with {N}/{X} substitution in body
+        # (and optional count blocks / override block -- see FOR_V2_DESIGN.md)
         parts = stripped.split()
         if parts[0].upper() == 'FOR' and len(parts) >= 2:
-            _ctx_stack.append({'mode': 'for', 'elements': parts[1:],
+            slots = _for_parse_header(parts[1:])
+            _ctx_stack.append({'mode': 'for', 'slots': slots,
+                               'body_lines': [], 'override_lines': [],
                                'opener_indent': cur_indent, 'body_base': None})
             continue
 
@@ -472,16 +651,21 @@ def _read_re_file(filepath: str, loader=None) -> list:
     If loader is None (legacy callers like diag.py), a dummy counter object is used.
     """
     try:
-        with open(filepath, encoding='utf-8', errors='replace') as f:
-            raw_lines = f.readlines()
+        mtime = os.stat(filepath).st_mtime_ns
+        cache_key = (filepath, mtime)
+        cached_stripped = _strip_comments_cache.get(cache_key)
+        if cached_stripped is None:
+            with open(filepath, encoding='utf-8', errors='replace') as f:
+                raw_lines = f.readlines()
+            cached_stripped = _strip_comments(raw_lines)
+            _strip_comments_cache[cache_key] = cached_stripped
+        stripped = cached_stripped
     except OSError:
         return []
 
     class _Counters:
         _switch_counter = 0
         _alloc_counter  = 0
-
-    stripped = _strip_comments(raw_lines)
 
     # RCALL/RRET: REMOVED (macros no longer exist, zero .re callers — see
     # macros.re's "RCALL/RRET: REMOVED" note). No expansion needed.
@@ -523,9 +707,11 @@ class LoadError(Exception):
     pass
 
 
-def _is_integer(s):
-    try: int(s); return True
-    except ValueError: return False
+def _is_integer(s: str) -> bool:
+    if not s: return False
+    c = s[0]
+    return (c.isdigit() or c == '-') and (len(s) == 1 or s[1:].isdigit() or
+            (c == '-' and len(s) > 1 and s[1:].isdigit()))
 
 
 class Loader:
@@ -538,12 +724,23 @@ class Loader:
         "_ito_addrs_set",
         "_lumen_prepass",
         "_lumen_count",      # dict[src_addr, int] — O(1) lumen append
+        "_ito_names",        # set of names that appear as RVOCA/RREDI/ITO targets
+                              # anywhere (global prepass) — these always need the
+                              # full ITO_SIZE layout, regardless of which command
+                              # sees the name FIRST during allocation.
+        "_ito_naming_commands",  # cache: set of macro names discovered (from
+                              # macros.re itself) to use this same convention —
+                              # see _discover_ito_naming_commands.
         "_bump",
+        "_aether_size",   # cached len(aether) for _bump_alloc hot path
         "_water",
         "_inscriptions",
         "_inscr_seq",
         "_switch_counter",  # counter for unique SWITCH/JEQ lux names
         "_alloc_counter",   # counter for unique SAVE/ALLOC_RAW lux names
+        "_lit_const_cache", # dict[int value, addr] — memoized C_<N> literal registers
+                              # minted on demand by _resolve for bare numeric
+                              # operands that aren't an existing C_<N> constant.
     )
 
     def __init__(self, interp) -> None:
@@ -558,12 +755,16 @@ class Loader:
         self._ito_addrs_set: set = set()
         self._lumen_prepass: dict = {}    # {sym_name: [tgt_name, ...]} from global scan
         self._lumen_count: dict = {}       # {src_addr: n_lumens_written} for O(1) append
+        self._ito_names: set = set()       # names needing full ITO layout (global scan)
+        self._ito_naming_commands = None   # cache for _discover_ito_naming_commands()
         self._bump         = _BOOTSTRAP_FIRST_FREE
+        self._aether_size  = len(self.interp.aether.aether)  # cached for _bump_alloc
         self._water        = _BOOTSTRAP_FIRST_FREE - 1
         self._inscriptions = []   # raw texts; materialised at freeze-time
         self._inscr_seq    = 0
         self._switch_counter = 0  # unique names for JEQ luces from SWITCH
         self._alloc_counter  = 0  # unique names for SAVE/ALLOC_RAW luces
+        self._lit_const_cache: dict = {}
 
     # ── Allocation helpers ────────────────────────────────────────────────────
 
@@ -579,8 +780,7 @@ Bump-allocate n contiguous luces. Returns start address.
         """
         ptr = self._bump
         end = ptr + n
-        aether_size = len(self.interp.aether.aether)
-        if end >= aether_size:
+        if end >= self._aether_size:
             print(f"HALT: out of Aether (alloc {n} at {ptr})", file=sys.stderr)
             raise SystemExit(1)
         self._bump = end
@@ -593,9 +793,20 @@ Bump-allocate n contiguous luces. Returns start address.
         Each lumen = 2 luces (rel, exit). Size = 1 + 2*n_lumens + 1 (terminator).
         Lumen count comes from global prepass (_lumen_prepass).
         The trailing 0 slot is the lumen-chain sentinel — explicitly allocated
-        so that lumen-scanning code can safely read it without bounds checks."""
+        so that lumen-scanning code can safely read it without bounds checks.
+
+        If name is anywhere the target of RVOCA/RREDI/ITO (per the global
+        _ito_names prepass), it needs the full ITO_SIZE layout instead —
+        delegate to _alloc_ito so the FIRST mention of the name (whatever
+        command that happens to be: NEW, NEWREF's X or Y, NEWSET, ...)
+        already reserves enough room. Without this, a later RVOCA/RREDI/ITO
+        line for the same name would silently no-op against the existing
+        (too-small) allocation — see _define's "already exists" guard — and
+        the lux would overlap with whatever gets allocated right after it."""
+        if name and name in self._ito_names:
+            return self._alloc_ito(name)
         n = len(self._lumen_prepass.get(name, []))
-        size = 1 + 2 * n + 1   # lux + 2*lumens + absence
+        size = 1 + 2 * n + 1   # lux + 2*lumina + absence
         addr = self._bump_alloc(size)
         self._data_addrs.append(addr)
         return addr
@@ -609,7 +820,7 @@ Bump-allocate n contiguous luces. Returns start address.
         """Allocate an ITO lux with compact fixed-slot layout.
         Slots 0-6: word, op, e1, e2, exit, next, pad (ITO_SIZE=7 luces).
         Slot 5 (next) written by _link_itos in pass2.
-        Slot 7+ (extra lumens from LINK commands) appended here from _lumen_prepass.
+        Slot 7+ (extra lumina from LINK commands) appended here from _lumen_prepass.
         """
         n_extra = len(self._lumen_prepass.get(name, []))
         size = _ITO_SIZE + 2 * n_extra + (1 if n_extra else 0)  # +1 terminator after extra lumen
@@ -637,11 +848,20 @@ Bump-allocate n contiguous luces. Returns start address.
 
         For ITO luces: _emit_ito sets lumen_count=3, so _add_lumen writes at
         slot 7 (ITO_SIZE) and beyond — the extra lumen area after the compact fields.
-        For Data luces: lumen_count starts at 0, lumens append from slot 1 onward.
+        For Data luces: lumen_count starts at 0, lumina append from slot 1 onward.
         """
         if not src_addr or not tgt_addr:
             return
         a = self.interp.aether.aether
+        # ITO luces store compact fields in slots 0-6; extra lumina start at
+        # slot 7 (ITO_SIZE).  _emit_ito normally seeds _lumen_count to
+        # ITO_SIZE//LUMEN_PAIR=3 so subsequent _add_lumen calls land at [7]+.
+        # But builder-class macros (RCALL_AT, LR, EMIT, …) are never expanded
+        # by Python's Wave-B — their target lux is in _ito_addrs_set but
+        # _lumen_count was never seeded, so _add_lumen would fall back to
+        # count=0 and write at [1]/[2], clobbering op/e1.  Guard against that:
+        if src_addr not in self._lumen_count and src_addr in self._ito_addrs_set:
+            self._lumen_count[src_addr] = _ITO_SIZE // LUMEN_PAIR
         count = self._lumen_count.get(src_addr, 0)
         i = 1 + count * LUMEN_PAIR
         a[src_addr + i]     = rel_addr
@@ -737,9 +957,6 @@ Bump-allocate n contiguous luces. Returns start address.
         # which knows whether the inscription aria is loaded.
         self._inscriptions.append(text)
 
-    # ── Saku: SCC-based auto-discovery ─────────────────────────────────────
-
-
     def _finalize_inscriptions(self) -> None:
         """Materialise queued inscriptions if the inscription aria is loaded.
 
@@ -829,7 +1046,7 @@ Bump-allocate n contiguous luces. Returns start address.
         # are not overwritten by the dispatch rebuild.
         self._setup_load_aspects()
 
-    def auto_discover(self, root_dir: str, exclude_seed: str = "core/aspects.re") -> None:
+    def auto_discover(self, root_dir: str, exclude_seed: str = "aspects.re") -> None:
         """Discover all .re files and load them in two global phases.
 
         Wave A (all files): NEW/NEWREF/NEWSET/ITO/BLOCK — allocate all names.
@@ -851,14 +1068,21 @@ Bump-allocate n contiguous luces. Returns start address.
             return
 
         # Lumen prepass: count all LINK targets so luces can be sized correctly.
+        # ITO-name prepass: collect every name that needs the full ITO_SIZE
+        # layout (RVOCA/RREDI/ITO targets), so _alloc_data can give such names
+        # the correct layout regardless of which command sees them first.
         lumen_prepass: dict = {}
+        ito_names: set = set()
         if os.path.exists(seed_path):
             for src, tgt in self._scan_file(seed_path):
                 lumen_prepass.setdefault(src, []).append(tgt)
+            ito_names |= self._scan_ito_names(seed_path)
         for fp in all_files:
             for src, tgt in self._scan_file(fp):
                 lumen_prepass.setdefault(src, []).append(tgt)
+            ito_names |= self._scan_ito_names(fp)
         self._lumen_prepass = lumen_prepass
+        self._ito_names |= ito_names
 
         # Read all files once, cache lines.
         file_data = []
@@ -881,6 +1105,7 @@ Bump-allocate n contiguous luces. Returns start address.
     def _load_group(self, filepaths):
         """Load a list of files using the two-phase protocol."""
         lumen_prepass: dict = {}
+        ito_names: set = set()
         file_data = []
         for filepath in sorted(filepaths):
             if not os.path.exists(filepath):
@@ -893,12 +1118,14 @@ Bump-allocate n contiguous luces. Returns start address.
             start_ptr = self._bump
             for src, tgt in self._scan_file(filepath):
                 lumen_prepass.setdefault(src, []).append(tgt)
+            ito_names |= self._scan_ito_names(filepath)
             lines = _read_re_file(filepath, self)
             file_data.append((filepath, file_id, start_ptr, lines))
         if not file_data:
             return
         for k, vs in lumen_prepass.items():
             self._lumen_prepass.setdefault(k, []).extend(vs)
+        self._ito_names |= ito_names
 
         self._run_waves(file_data,
                         lambda handler, label, file_order=None:
@@ -928,6 +1155,132 @@ Bump-allocate n contiguous luces. Returns start address.
             if cmd == 'LINK' and len(parts) >= 4:
                 links.append((parts[1], parts[3]))
         return links
+
+    def _discover_ito_naming_commands(self):
+        """Scan macros.re itself to find every macro whose body, anywhere
+        within its NEWREF...next-NEWREF span, writes its caller's first
+        positional argument (RA_MA0) into RA_MC_LUX before a WRITE_ITO_SLOTS-
+        style self-reference write -- i.e. 'ITO <label> Move El1=RA_MA0
+        ... Exit=RA_MC_LUX'. This is the universal calling-convention
+        signature for "this macro's first argument (parts[1] on the call
+        site line) becomes the address of a new, self-referential ITO
+        entry, so it needs the full ITO_SIZE=7 layout from its *first*
+        mention, not whatever smaller layout a name picks up if first seen
+        as a plain NEW/NEWREF/NEWSET argument".
+
+        Discovering this automatically (rather than hand-maintaining a list
+        of command names) means any future macro written the same way is
+        covered with zero changes here. The previous hand-maintained list
+        (RVOCA/RREDI/NOP/JZ/JEQ/CLEAR/ALLOC_TO) silently missed LR/LT/
+        RCALL_AT/EMIT/EMITI/PUTBYTE/WALK_ONE/LINK_OP/WALK_ITO/UNLINK_OP/LX/LH
+        -- all of which follow this exact convention -- which is what broke
+        RTB_LUX_BODY (named via LR, referenced earlier in yaku.re as a
+        plain register before its own definition) -- see BUGS.md.
+
+        A macro's body is *not* required to use RA_MA0 at its own entry
+        label specifically (WALK_ONE's entry label uses RA_MA3 for an
+        internal sub-step; RA_MA0/"name" itself is only wired at a later
+        instruction within the same body) -- so this walks the whole span
+        between one NEWREF and the next, not just the first line.
+
+        Cached on first call (macros.re doesn't change mid-run).
+        """
+        if self._ito_naming_commands is not None:
+            return self._ito_naming_commands
+
+        macros_path = os.path.join(_HERE, 'macros.re')
+        commands = set()
+        current_macro = None
+        if os.path.exists(macros_path):
+            for _lineno, line in _read_re_file(macros_path):
+                parsed = _parse_line(line)
+                if not parsed:
+                    continue
+                cmd, parts, _ = parsed
+                if cmd == 'NEWREF' and len(parts) >= 2:
+                    current_macro = parts[1]
+                    continue
+                # Old pattern: ITO <label> Move El1=RA_MA0 ... Exit=RA_MC_LUX
+                if (current_macro and cmd == 'ITO' and len(parts) >= 5
+                        and parts[2] == 'Move' and parts[3] == 'El1=RA_MA0'
+                        and 'Exit=RA_MC_LUX' in parts):
+                    commands.add(current_macro)
+                # New pattern: WAVE <label> ... At=RA_MA0
+                # WAVE-converted macros use At=RA_MA0 to mark the naming arg
+                if (current_macro and cmd == 'WAVE' and len(parts) >= 3
+                        and any(p == 'At=RA_MA0' for p in parts[3:])):
+                    commands.add(current_macro)
+
+        self._ito_naming_commands = commands
+        return commands
+
+    def _scan_ito_names(self, filepath):
+        """Scan one .re file (post indent-expansion, same view every other wave
+        sees). Returns the set of names that appear as the target of any
+        macro discovered by _discover_ito_naming_commands (RVOCA, RREDI,
+        ITO, JZ, JEQ, CLEAR, LR, LT, RCALL_AT, EMIT, EMITI, PUTBYTE, and any
+        future macro following the same convention) -- i.e. names that need
+        the full ITO_SIZE=7 layout.
+
+        This exists because allocation otherwise happens incrementally, in
+        file order: whichever command first mentions a name decides its lux
+        size (_alloc_data's small layout vs _alloc_ito's full layout). A name
+        that is first seen as a NEW/NEWREF/NEWSET argument but is *later*
+        the target of one of these commands would otherwise be stuck with a
+        small lux that a later definition silently fails to enlarge
+        (_define's "already exists" guard returns the old, undersized
+        address). Same root cause and same fix shape as the LINK lumen
+        prepass above — both need the *global* picture before allocating.
+
+        ITO itself is a special case handled directly below (it's the base
+        primitive, not a NEWREF-defined macro, so it can't be discovered the
+        same way). ALLOC_TO is also special-cased: beyond its own name, its
+        macro expansion needs '_J'/'_K' suffix luces pre-sized too.
+
+        JZ/JEQ/CLEAR/NOP/ALLOC_TO/etc. are included alongside RVOCA/RREDI/ITO
+        because all of them are fast-pathed directly in Wave-B's
+        _ito_lux/_wave2_line (not deferred to LOAD_MAIN), and _ito_lux has
+        the exact same reallocation hazard: if a NEWREF alias elsewhere
+        resolves the same name *before* Wave-B reaches its definition, the
+        alias caches the stale Wave-1 stub address instead of the final one.
+        """
+        naming_commands = self._discover_ito_naming_commands()
+        names = set()
+        for _lineno, line in _read_re_file(filepath):
+            parsed = _parse_line(line)
+            if not parsed: continue
+            cmd, parts, _ = parsed
+            if cmd in ('ITO', 'WAVE') and len(parts) >= 3:
+                name = parts[1]
+                if '{' in name or any('{' in p for p in parts[2:]):
+                    continue
+                names.add(name)
+                # WAVE also needs _lux/_op/_e1/_e2/_ex/_w suffixed nodes
+                if cmd == 'WAVE':
+                    # label itself needs ITO-size (may be ref_name of a NEWREF)
+                    names.add(name)
+                    has_at  = any(p.startswith('At=')   for p in parts[3:])
+                    has_nxt = any(p.startswith('Next=') for p in parts[3:])
+                    suffixes = ['_op','_e1','_e2','_ex','_w']
+                    if not has_at:
+                        suffixes = ['_lux'] + suffixes
+                    if has_nxt:
+                        suffixes += ['_nl', '_nlw']
+                    for sfx in suffixes:
+                        names.add(name + sfx)
+            elif cmd == 'ALLOC_TO' and len(parts) >= 4:
+                name = parts[1]
+                if '{' in name or any('{' in p for p in parts[2:]):
+                    continue
+                names.add(name)
+                names.add(name + '_J')
+                names.add(name + '_K')
+            elif cmd in naming_commands and len(parts) >= 2:
+                name = parts[1]
+                if '{' in name or (len(parts) >= 3 and '{' in parts[2]):
+                    continue  # FOR-macro template body, not a real name yet
+                names.add(name)
+        return names
 
     def _primitive_defines(cmd, parts):
         """Names defined by primitive commands (NEW/NEWREF/NEWSET/ITO/BLOCK)."""
@@ -959,6 +1312,8 @@ Bump-allocate n contiguous luces. Returns start address.
                 yield parts[2]
         elif cmd == "SETREF" and len(parts) >= 3:
             yield parts[1]; yield parts[2]
+        elif cmd == "ALIAS" and len(parts) >= 3:
+            yield parts[1]; yield parts[2]
         elif cmd in ("NEW", "NEWREF") and len(parts) >= 2:
             # NEWREF X Y — cross-ref: X depends on Y (only if Y is a valid identifier)
             if cmd == "NEWREF" and len(parts) >= 3:
@@ -985,6 +1340,26 @@ Bump-allocate n contiguous luces. Returns start address.
         if not parsed:
             return
         cmd, parts, cmd_part = parsed
+
+        # WAVE: pre-allocate the label and all generated suffix nodes as ITO luces.
+        # This mirrors what ITO does in wave1a so that wave2 can wire them.
+        if cmd == "WAVE" and len(parts) >= 3:
+            label = parts[1]
+            has_at  = any(p.startswith("At=")   for p in parts[3:])
+            has_nxt = any(p.startswith("Next=") for p in parts[3:])
+            nodes = [label]
+            if not has_at:
+                nodes.append(label + "_lux")
+            nodes += [label + sfx for sfx in ("_op", "_e1", "_e2", "_ex", "_w")]
+            if has_nxt:
+                nodes += [label + "_nl", label + "_nlw"]
+            for node in nodes:
+                if node not in self.symbols:
+                    addr = self._alloc_ito(node)
+                    self.symbols[node] = addr
+                    self.interp.aether.aether[addr + _WORD] = addr
+            return
+
         if cmd not in _BOOTSTRAP_CMDS:
             return  # non-bootstrap → Reca macro, no pass1 allocation needed
 
@@ -1006,6 +1381,7 @@ Bump-allocate n contiguous luces. Returns start address.
                         and ref_name not in self.symbols):
                     ref_addr = self._alloc_data(ref_name)
                     self.symbols[ref_name] = ref_addr
+                    self.interp.aether.aether[ref_addr + _WORD] = ref_addr  # self-ref invariant
             if cmd == "NEWREF":
                 a = self.interp.aether.aether
                 name_addr = self.symbols.get(parts[1])
@@ -1190,15 +1566,50 @@ Bump-allocate n contiguous luces. Returns start address.
     # ── Pass 2: wire everything ───────────────────────────────────────────────
 
     def _resolve(self, name) -> int:
-        """Resolve a name or integer literal to an address."""
+        """Resolve a name or integer literal to an address.
+
+        A bare numeric literal (e.g. "0", "47") must resolve to the ADDRESS
+        of a register holding that value, never the literal value itself —
+        every ITO field is read by the interpreter through a dereference
+        (aether[a1], aether[a2], aether[exit], ...), so storing a raw value
+        directly in an e1/e2/exit slot makes the interpreter compare against
+        whatever happens to live at that address instead of the intended
+        constant (and, for the value 0 specifically, the interpreter's own
+        truthiness-gated ops like Equal/Add treat a zero *address* as "no
+        operand", silently skipping the operation rather than comparing).
+
+        This is exactly the convention the codebase already uses by hand for
+        the common case — e.g. the JZ macro never compares against a bare
+        "0"; it uses RA_C0_REF, the address of the C_0 constant register —
+        generalized here so it applies uniformly to any bare numeric operand
+        resolved through this function (JEQ/Equal/Move/... operands written
+        as plain digits, including ones synthesized by SWITCH-to-JEQ
+        expansion in _expand_indent).
+
+        Reuses the project's existing "C_<value>" named constant where one
+        is already defined (the established convention, e.g. C_0, C_1,
+        C_33); otherwise lazily allocates — and memoizes — a dedicated
+        1-lux literal-constant register, so repeated uses of the same
+        literal share one address rather than each minting a new lux.
+        """
         if name in self.symbols:
             return self.symbols[name]
         try:
             v = int(name)
-            if v >= 0: return v
         except ValueError:
-            pass
-        raise LoadError(f"Unknown name: '{name}'")
+            raise LoadError(f"Unknown name: '{name}'")
+        if v < 0:
+            raise LoadError(f"Unknown name: '{name}'")
+        c_name = f"C_{v}"
+        if c_name in self.symbols:
+            return self.symbols[c_name]
+        if v in self._lit_const_cache:
+            return self._lit_const_cache[v]
+        addr = self._alloc_data(c_name)
+        self.symbols[c_name] = addr
+        self.interp.aether.aether[addr + _WORD] = v & _MASK64
+        self._lit_const_cache[v] = addr
+        return addr
 
     def _wire_word_value(self, addr: int, parts: list, cmd_part: str) -> None:
         """Write word(addr) from a value token — shared by SET and NEWSET Wave-B handlers.
@@ -1234,7 +1645,7 @@ Bump-allocate n contiguous luces. Returns start address.
         if exit: a[addr + _EXIT] = exit
         if nxt and nxt != addr + _ITO_SIZE:
             a[addr + _NEXT] = nxt
-        # extra LINK lumens start at slot ITO_SIZE (=7); initial count = ITO_SIZE // LUMEN_PAIR
+        # extra LINK lumina start at slot ITO_SIZE (=7); initial count = ITO_SIZE // LUMEN_PAIR
         self._lumen_count[addr] = _ITO_SIZE // LUMEN_PAIR
 
     def _emit_ito(self, name: str, op: str, *, e1=None, e2=None,
@@ -1253,8 +1664,8 @@ Bump-allocate n contiguous luces. Returns start address.
         a[addr + _EXIT] = self._resolve(exit) if exit is not None else 0
         # SLOT_NEXT (5) stays 0 for adjacent luces (fall-through). _link_itos writes
         # only for non-adjacent explicit links.
-        # lumen_count=3 → extra LINK lumens appended at addr+ITO_SIZE (slot 7).
-        self._lumen_count[addr] = _ITO_SIZE // LUMEN_PAIR  # extra lumens start at slot ITO_SIZE
+        # lumen_count=3 → extra LINK lumina appended at addr+ITO_SIZE (slot 7).
+        self._lumen_count[addr] = _ITO_SIZE // LUMEN_PAIR  # extra lumina start at slot ITO_SIZE
         if auto_next and self._last_ito:
             self._link_itos(self._last_ito, addr)
         self._last_ito = addr
@@ -1281,6 +1692,18 @@ Bump-allocate n contiguous luces. Returns start address.
                 a[name_addr + _WORD] = name_addr
             return
 
+        if cmd == "ALIAS":
+            # ALIAS X Y — X becomes the *same address* as Y (true alias,
+            # zero allocation), unlike SETREF/NEWREF which both allocate a
+            # separate lux whose word field points at the target (one hop
+            # of indirection via Voca's "read word, jump there" semantics).
+            # A true alias behaves identically to the original name in
+            # every context (Read/Write/Voca alike), not just when jumped
+            # to -- the safer choice when the future use isn't fully known.
+            if len(parts) < 3: return
+            self.symbols[parts[1]] = self._resolve(parts[2])
+            return
+
         if cmd == "SETREF":
             if len(parts) < 3: return
             name_addr = self._resolve(parts[1])
@@ -1289,7 +1712,7 @@ Bump-allocate n contiguous luces. Returns start address.
             return
 
     def _wave2_line(self, line, filepath, lineno):
-        """Wave-B: wire operands, lumens, Next pointers."""
+        """Wave-B: wire operands, lumina, Next pointers."""
         parsed = _parse_line(line)
         if not parsed: return
         cmd, parts, cmd_part = parsed
@@ -1376,6 +1799,56 @@ Bump-allocate n contiguous luces. Returns start address.
         if cmd == "BLOCK":
             return  # allocated in Wave-A (_wave1a_line); no wiring needed
 
+        # WAVE: synthesize an ITO at runtime.
+        # WAVE label Op [El1=X] [El2=Y] [Exit=Z]
+        # Mirrors ITO syntax. Expands to the standard builder sequence:
+        #   __LT_ALLOC_ITO + 5 Move nodes + Voca WRITE_ITO_SLOTS
+        # The label names the __LT_ALLOC_ITO node (the visible entry point).
+        # Operands are _REF-style: addresses of luces holding the values.
+        # Absent El2/Exit default to C_0 (zero/null), matching CLEAR semantics.
+        if cmd == "WAVE" and len(parts) >= 3:
+            label = parts[1]
+            op    = parts[2]
+            kw: dict = {}
+            for pair in parts[3:]:
+                if "=" not in pair: break
+                k, v = pair.split("=", 1)
+                kw[k] = v
+            e1    = kw.get("El1")
+            e2    = kw.get("El2")
+            exit_ = kw.get("Exit")
+            at    = kw.get("At")    # optional: reuse existing lux instead of allocating
+            nxt   = kw.get("Next")   # optional: wire next-slot of synthesized ITO to this addr
+            reset = kw.get("Reset")  # optional: use WRITE_ITO_SLOTS_RESET instead of WRITE_ITO_SLOTS
+
+            # All operands passed as STRINGS to _emit_ito (which calls _resolve).
+            # Passing integers would route through _resolve's C_N path, giving
+            # the wrong address (e.g. _resolve(484) -> addr(C_484) != addr(Move)).
+
+            if at:
+                # At=X: reuse existing lux at X — skip __LT_ALLOC_ITO.
+                # Move the at= address into RA_MC_LUX so WRITE_ITO_SLOTS knows the target.
+                self._emit_ito(label,           "Move",  e1=at,          exit="RA_MC_LUX",      auto_next=True)
+            else:
+                # Default: allocate a fresh ITO slot at runtime.
+                self._emit_ito(label,           "__LT_ALLOC_ITO",                               auto_next=True)
+                self._emit_ito(label + "_lux",  "Move",  e1="RA_MA_RET", exit="RA_MC_LUX",      auto_next=True)
+            self._emit_ito(label + "_op",   "Move",  e1=op,           exit="RA_MC_OP",       auto_next=True)
+            self._emit_ito(label + "_e1",   "Move",  e1=e1 or "C_0",  exit="RA_MC_E1",       auto_next=True)
+            self._emit_ito(label + "_e2",   "Move",  e1=e2 or "C_0",  exit="RA_MC_E2",       auto_next=True)
+            self._emit_ito(label + "_ex",   "Move",  e1=exit_ or "C_0", exit="RA_MC_DEST",   auto_next=True)
+            wis = "WRITE_ITO_SLOTS_RESET" if reset else "WRITE_ITO_SLOTS"
+            if nxt:
+                # Next=N: after WRITE_ITO_SLOTS, also wire the synthesized ITO's
+                # next-slot to N. Emits: Add src+C_5→RA_MC_SLOT; Write slot←N.
+                # Uses RA_MC_LUX which still holds the synthesized ITO's address.
+                self._emit_ito(label + "_w",    "Voca",  e1=wis, exit="RA_LINK", auto_next=True)
+                self._emit_ito(label + "_nl",   "Add",   e1="RA_MC_LUX", e2="C_5", exit="RA_MC_SLOT", auto_next=True)
+                self._emit_ito(label + "_nlw",  "Write", e1="RA_MC_SLOT", e2=nxt,  auto_next=True)
+            else:
+                self._emit_ito(label + "_w",    "Voca",  e1=wis, exit="RA_LINK", auto_next=True)
+            return
+
         # RVOCA/RREDI: pre-allocated ITO lux (name in symbols from pass1).
         # Wire it: pass lux addr as MA0, sub/RA_LINK target as MA1.
         # This allows the Reca RVOCA/RREDI program to fill in slots correctly.
@@ -1446,34 +1919,52 @@ Bump-allocate n contiguous luces. Returns start address.
             return
 
         # JEQ name reg1 reg2 dest
-        # Expands matching LOAD_MAIN JEQ macro exactly:
+        # Expands matching LOAD_MAIN JEQ macro exactly (optimized, no _K NOP):
         #   Equal(name, e1=reg1, e2=reg2, exit=RA_JEQ_FLAG)
         #   JumpIf(_J,  e1=RA_JEQ_FLAG, exit=dest)
-        #   NOP(_K)
+        # JumpIf's own slot 5 (next) is the fall-through point for autolink —
+        # the next ordinary ITO in the file links into _J's next, which the
+        # interpreter follows when the condition is false. No NOP lux needed.
         # Using RA_JEQ_FLAG (not a per-lux _F) makes LOAD_MAIN re-wire idempotent.
         if cmd == "JEQ" and len(parts) >= 5:
             name, reg1, reg2, dest = parts[1], parts[2], parts[3], parts[4]
             ji_name  = name + "_J"
-            nop_name = name + "_K"
             _ito_lux(name,     "Equal",   e1=reg1, e2=reg2, exit="RA_JEQ_FLAG")
-            _ito_lux(ji_name,  "JumpIf",  e1="RA_JEQ_FLAG", exit=dest)
-            nop = _ito_lux(nop_name, "Move", e1="C_0", exit="C_0")
-            self._last_ito = nop
+            ji = _ito_lux(ji_name,  "JumpIf",  e1="RA_JEQ_FLAG", exit=dest)
+            self._last_ito = ji
             return
 
         # JZ name reg dest
-        # Expands matching LOAD_MAIN JZ macro:
+        # Expands matching LOAD_MAIN JZ macro (optimized, no _K NOP):
         #   Equal(name, e1=reg, e2=C_0, exit=RA_JEQ_FLAG)
         #   JumpIf(_J,  e1=RA_JEQ_FLAG, exit=dest)
-        #   NOP(_K)
         if cmd == "JZ" and len(parts) >= 4:
             name, reg, dest = parts[1], parts[2], parts[3]
             ji_name  = name + "_J"
-            nop_name = name + "_K"
             _ito_lux(name,     "Equal",   e1=reg, e2="C_0", exit="RA_JEQ_FLAG")
-            _ito_lux(ji_name,  "JumpIf",  e1="RA_JEQ_FLAG", exit=dest)
-            nop = _ito_lux(nop_name, "Move", e1="C_0", exit="C_0")
-            self._last_ito = nop
+            ji = _ito_lux(ji_name,  "JumpIf",  e1="RA_JEQ_FLAG", exit=dest)
+            self._last_ito = ji
+            return
+
+        # ALLOC_TO name dest count
+        # Expands matching LOAD_MAIN ALLOC_TO macro: 3 chained ITOs —
+        #   name   : Move(e1=count,            exit=RA_ALLOC_COUNT)
+        #   name_J : Voca(e1=ALLOC_LUCES,       exit=RA_LINK)
+        #   name_K : Move(e1=RA_ALLOC_RESULT,   exit=dest)
+        # ALLOC_TO had no Python-side fast path (unlike JZ/JEQ/CLEAR/NOP/
+        # RCALL_AT), yet it's used early — via SAVE, BS_INTERN's lazy-alloc
+        # path, etc. — by files LOAD_MAIN processes long before it would
+        # otherwise reach macros.re's own ALLOC_TO definition. Same
+        # bootstrap chicken-and-egg problem the other fast-paths already
+        # solve; ALLOC_TO was simply missing from that list.
+        if cmd == "ALLOC_TO" and len(parts) >= 4:
+            name, dest, count = parts[1], parts[2], parts[3]
+            j_name = name + "_J"
+            k_name = name + "_K"
+            _ito_lux(name,   "Move", e1=count,              exit="RA_ALLOC_COUNT")
+            _ito_lux(j_name, "Voca", e1="ALLOC_LUCES",       exit="RA_LINK")
+            k = _ito_lux(k_name, "Move", e1="RA_ALLOC_RESULT", exit=dest)
+            self._last_ito = k
             return
 
         # Unknown command: LOAD_MAIN Wave-B handles remaining macros.
@@ -1486,6 +1977,60 @@ Bump-allocate n contiguous luces. Returns start address.
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _BIN  = os.path.join(_HERE, "reca.bin")
 _SYM  = os.path.join(_HERE, "reca.sym")
+
+
+def _bin_is_stale() -> bool:
+    """True if reca.bin/reca.sym are missing or older than any .re source
+    file (or the bootstrap .py files that build them).
+
+    Generalizes gen_compiler.py's _needs_regen() mtime-check pattern —
+    same shape (target missing or older than a source → stale), applied
+    to the frozen Aether binary instead of the generated .re artifacts.
+    Used by load_or_freeze() so callers get a correct, fast thaw when
+    nothing changed, and a correct, slower freeze() when something did,
+    instead of every caller picking one of those two unconditionally.
+    """
+    if not (os.path.exists(_BIN) and os.path.exists(_SYM)):
+        return True
+    bin_mtime = os.path.getmtime(_BIN)
+    sources = glob.glob(os.path.join(_HERE, '**', '*.re'), recursive=True)
+    sources += [
+        os.path.join(_HERE, 'loader.py'),
+        os.path.join(_HERE, 'interpreter.py'),
+        os.path.join(_HERE, 'symphony.py'),
+    ]
+    for s in sources:
+        try:
+            if os.path.getmtime(s) > bin_mtime:
+                return True
+        except OSError:
+            continue
+    return False
+
+
+def discover_newref_macro_names(macros_path=None):
+    """Every NEWREF-declared macro name in macros.re, as a set.
+
+    Standalone, no Loader instance required -- shared by any diagnostic
+    script that needs to know "is this name a real macro command" (e.g.
+    classify_spans.py's swallowed-comment detector, diag.py's mode_macros
+    coverage report) without each maintaining its own hand-written copy of
+    this scan, which is exactly how those two drifted out of sync with the
+    actual macro set in the past (see BUGS.md).
+    """
+    if macros_path is None:
+        macros_path = os.path.join(_HERE, 'macros.re')
+    names = set()
+    if not os.path.exists(macros_path):
+        return names
+    for _lineno, line in _read_re_file(macros_path):
+        parsed = _parse_line(line)
+        if not parsed:
+            continue
+        cmd, parts, _ = parsed
+        if cmd == 'NEWREF' and len(parts) >= 2:
+            names.add(parts[1])
+    return names
 
 
 def freeze() -> "Loader":
@@ -1501,16 +2046,35 @@ def freeze() -> "Loader":
     """
     from interpreter import Interpreter
 
+    # Ensure generated artifacts (aria/layout.re, preamble.re, compiler_sf.re)
+    # are up to date before loading .re files. gen_compiler.generate_artifacts()
+    # only writes files — it does NOT call freeze() (no circular dependency).
+    import gen_compiler as _gc
+    if _gc._needs_regen():
+        _gc.generate_artifacts(verbose=True)
+
     print("Reca freeze: Python loader (source of truth)...", file=sys.stderr)
     interp = Interpreter()
     loader = Loader(interp)
 
     # Python loads all files — fully, without restrictions.
-    seed = os.path.join(_HERE, "core", "aspects.re")
-    if not loader.load_file(seed):
-        print("Error: core/aspects.re not found", file=sys.stderr)
+    # aspects.re must load first (its 24 names are used as literal op= values
+    # by everything else). Found by recursive filename search, not a
+    # hardcoded path — the canonical location is core/aspects.re, but the
+    # search itself doesn't assume any particular directory layout.
+    seed_candidates = sorted(glob.glob(
+        os.path.join(_HERE, '**', 'aspects.re'), recursive=True))
+    if not seed_candidates:
+        print("Error: aspects.re not found anywhere under project root", file=sys.stderr)
         sys.exit(1)
-    loader.auto_discover(_HERE)
+    seed = seed_candidates[0]
+    if len(seed_candidates) > 1:
+        print(f"Warning: multiple aspects.re found, using {seed}; "
+              f"others ignored: {seed_candidates[1:]}", file=sys.stderr)
+    if not loader.load_file(seed):
+        print(f"Error: failed to load seed file {seed}", file=sys.stderr)
+        sys.exit(1)
+    loader.auto_discover(_HERE, exclude_seed=os.path.relpath(seed, _HERE))
     loader._finalize_inscriptions()
     interp.update_relations(loader.symbols)
     loader._setup_load_aspects()   # re-register after final update_relations
@@ -1605,9 +2169,18 @@ def freeze() -> "Loader":
                     if _sfx.isdigit() and len(_sfx) >= 3 and _sfx != '000':
                         continue
                 _h = _djb2(_sym_name.encode("utf-8"))
-                _h_masked = _h & _ht_mask  # match what BS_TOKEN_VALUE computes
-                _slot = _h_masked & _ht_mask
-                _entry = (_h_masked << 32) | (_sym_addr & _M32)
+                # Slot index: only the low bits (table-size mask) — matches the
+                # "And RA_HT_HASH RA_HT_MASK" HT_LOOKUP/HT_INSERT do internally.
+                _slot = _h & _ht_mask
+                # Stored comparison value: the *wide* 32-bit hash (matches
+                # BS_LOOKUP/BS_INTERN, which now mask to MASK_LOW32, not the
+                # narrow table-size BS_HT_MASK — using the same narrow mask
+                # for both the slot index AND the stored hash would make any
+                # two names that collide on slot index indistinguishable from
+                # a real match, since the "collision check" would be comparing
+                # the same already-slot-masked value against itself).
+                _h32 = _h & _M32
+                _entry = (_h32 << 32) | (_sym_addr & _M32)
                 for _ in range(_ht_sz):
                     _existing = a[_ht_base_addr + _slot]
                     if _existing == 0:
@@ -1669,6 +2242,10 @@ def freeze() -> "Loader":
         ra_frame_size = loader.symbols.get("RA_FRAME_SIZE", 0)
         if ra_frame_size:
             a[ra_frame_size] = FRAME_SIZE
+            # interp._ra_frame_size was cached by the earlier update_relations()
+            # call (before this write existed) and would otherwise stay 0
+            # forever — refresh it now that the real value is in place.
+            interp._ra_frame_size = FRAME_SIZE
         ra_stack_guard = loader.symbols.get("RA_STACK_GUARD", 0)
         if ra_stack_guard:
             a[ra_stack_guard] = STACK_BOTTOM
@@ -1747,7 +2324,9 @@ def freeze() -> "Loader":
             interp.execute_aether(load_main_addr, no_cache=True, max_steps=100_000_000)
             print("  LOAD_MAIN complete.", file=sys.stderr)
         except Exception as e:
+            import traceback as _tb
             print(f"  LOAD_MAIN error: {type(e).__name__}: {e}", file=sys.stderr)
+            _tb.print_exc()
 
             # Reconstruct symbols dict from intern htable (lux[1] = packed name)
             rebuilt = _rebuild_symbols_from_aether(loader, interp)
@@ -1767,39 +2346,44 @@ def freeze() -> "Loader":
     _bs_fl = loader.symbols.get("BS_FILE_LIST", 0)
     if _bs_fl: a[_bs_fl] = file_list_base
 
-    # Restore command handler words: each command lux must point to its handler SPN.
-    # macros.re wires these via NEWREF X handler_start before LOAD_MAIN;
-    # after LOAD_MAIN we restore them since builder overwrites can corrupt them.
-    for _cmd_name, _handler_name in [
-        ("NEWREF",   "NEWREF_START"),
-        ("SETREF",   "SETREF_START"),
-        ("NOLINK",   "NOLINK_START"),
-        ("CLEAR",    "CLEAR_SPN"),
-        ("NOP",      "NOP_SPN"),
-        ("RVOCA",    "RVOCA_SPN"),
-        ("RREDI",    "RREDI_SPN"),
-        ("JEQ",      "JEQ_N1_W0"),
-        ("JZ",       "JZ_N1_W0"),
-        ("SWITCH",   "SWITCH_SPN"),
-        ("FOR",      "FOR_SPN"),
-        ("SAVE",     "SAVE_SPN"),
-        ("NOITO",    "NOITO_START"),
-        ("CHAIN",    "CHAIN_START"),
-        ("RCALL_AT", "RCALL_AT_SPN"),
-        ("LH",       "LH_SPN"),
-        ("LR",       "LR_SPN"),
-        ("LT",       "LT_SPN"),
-        ("LX",       "LX_SPN"),
-        ("LINK",     "LINK_SPN"),
-        ("BLOCK",    "BLOCK_SPN"),
-        ("NEXO",     "NEXO_SPN"),
-        ("PUTBYTE",  "PUTBYTE_SPN"),
-        ("WALK_ONE", "WALK_ONE_SPN"),
-    ]:
-        _cmd  = loader.symbols.get(_cmd_name, 0)
-        _hdlr = loader.symbols.get(_handler_name, 0)
-        if _cmd and _hdlr:
-            a[_cmd] = _hdlr
+    # Restore command handler words: each command lux must point to its handler.
+    # Any file can wire a cross-ref via "NEWREF X Y" before LOAD_MAIN; after
+    # LOAD_MAIN we restore them since builder overwrites can corrupt them (if a
+    # _J/_K ITO from some other macro's expansion happens to land at the same
+    # address as a command word, it silently clobbers the word value, breaking
+    # any later first-token dispatch to that command, or — for plain constant
+    # cross-refs like C_7_REF in constants.re — silently reverting word(X) back
+    # toward whatever LOAD_MAIN happened to leave there).
+    #
+    # Derived automatically from every "NEWREF X Y" pair in *every* .re file,
+    # rather than a hand-maintained list of command names or a single
+    # hardcoded source file. A hand-maintained list silently misses any
+    # macro added later that's used as a direct line-starting command (this
+    # is exactly what happened: EMIT/EMITI/ALLOC_TO/UNLINK_OP/LINK_OP are all
+    # genuinely dispatched as commands elsewhere in the project -- 25/12/7/2/8
+    # uses respectively -- but were absent from the old hand-maintained list).
+    # Restricting the scan to macros.re alone is the same class of mistake at
+    # the file level: any other file's NEWREF cross-refs (e.g. constants.re's
+    # C_7_REF) are just as vulnerable to LOAD_MAIN corruption and deserve the
+    # same restoration. Restoring unconditionally for every NEWREF pair in
+    # every file is harmless for refs that are only ever resolved once,
+    # statically, at a call site (their own word value is never read via
+    # dispatch), and correct by construction for every ref that *is* read
+    # through Voca-style "read word, jump there" indirection -- no need to
+    # guess which file or which macro.
+    for _re_path in all_files:
+        if os.path.abspath(_re_path) == os.path.abspath(seed):
+            continue  # aspects.re: no NEWREF cross-refs, self-ref handled separately
+        for _lineno, _line in _read_re_file(_re_path):
+            _parsed = _parse_line(_line)
+            if not _parsed:
+                continue
+            _pcmd, _pparts, _ = _parsed
+            if _pcmd == 'NEWREF' and len(_pparts) >= 3:
+                _cmd  = loader.symbols.get(_pparts[1], 0)
+                _hdlr = loader.symbols.get(_pparts[2], 0)
+                if _cmd and _hdlr:
+                    a[_cmd] = _hdlr
 
     k_cursor    = loader.symbols.get("K_CURSOR", 0)
     k_watermark = loader.symbols.get("K_WATERMARK", 0)
@@ -1857,7 +2441,7 @@ def freeze() -> "Loader":
     # Self-hosting progress: how many .re files did LOAD_MAIN complete?
     total_files = loader.symbols.get('BS_FILE_COUNT', 0)
     total_files = int(a[total_files]) if total_files else 0
-    ld_fidx     = loader.symbols.get('LD_FIDX', 0)
+    ld_fidx     = loader.symbols.get('SK_FIDX', 0)
     done_files  = int(a[ld_fidx]) if ld_fidx else 0
     if total_files:
         filled = int(20 * done_files / total_files)
@@ -1926,6 +2510,25 @@ def load_symbols() -> dict:
             addr_str, name = line.split("\t", 1)
             syms[name] = int(addr_str)
     return syms
+
+
+def load_or_freeze() -> tuple:
+    """Load from reca.bin+reca.sym if available and up to date, else run freeze().
+
+    Returns (interp, symbols) where interp is a ready Interpreter and
+    symbols is the name→addr dict. Used by trace.py, repl.py etc. to
+    avoid re-freezing when a cached binary exists and is still fresh
+    relative to every .re source file (see _bin_is_stale()).
+    """
+    from interpreter import Interpreter
+    if not _bin_is_stale():
+        interp = Interpreter()
+        interp.aether.thaw(_BIN)
+        symbols = load_symbols()
+        interp.update_relations(symbols)
+        return interp, symbols
+    ldr = freeze()
+    return ldr.interp, ldr.symbols
 
 
 def fresh_loader(bin_path: str = _BIN, sym_path: str = _SYM) -> "Loader":

@@ -30,9 +30,9 @@ a 25th or removing one redefines Reca.
 ── Load-time primitives (not aspects) ──────────────────────────────────────
 
 At load time (bootstrap, not runtime), three operations are the minimum:
-  NEW  — allocate a Lux in Aether
-  SET  — write a value into a Lux
-  LINK — connect two Lux with a relation
+  "NEW"  — allocate a Lux in Aether
+  "SET"  — write a value into a Lux
+  "LINK" — connect two Lux with a relation
 All other loader commands (ITO, BLOCK, NEWREF, SETREF, NOLINK) are
 combinations of these three. They exist in the loader for performance
 during bootstrap, but conceptually they are not primitives.
@@ -59,7 +59,7 @@ then jumps to El1.lux. Redi jumps to RA_LINK.lux.
 The call stack (RA_SP) is automatic: Voca pushes the OLD RA_LINK onto
 aether[RA_SP] before overwriting it; Redi pops it back after jumping.
 This makes nested/recursive calls correct with zero per-function
-bookkeeping. See runtime/regs.re for details.//
+bookkeeping. See runtime/registers.re for details.//
 
 ── Aether (IDs 1–2) ─────────────────────────────────────────────────────────
 

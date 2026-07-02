@@ -7,11 +7,11 @@ loader. The open-close block syntax handles visual organisation.
 
 With this aria loaded, the INSCRIPTION relation is defined.
 Authors create inscription Lux explicitly using the standard
-NEW + SET mechanism and bind them to code with INSCRIPTION_FOR:
+"NEW" + "SET" mechanism and bind them to code with INSCRIPTION_FOR:
 
-NEW MyNote
-SET MyNote "This describes the next function."
-LINK MyNote INSCRIPTION_FOR SomeFunction
+"NEW" MyNote
+"SET" MyNote "This describes the next function."
+"LINK" MyNote INSCRIPTION_FOR SomeFunction
 
 Inscriptions are not auto-created from non-command lines.
 The loader does not scan for "unknown" tokens. Inscription is
@@ -52,11 +52,11 @@ Implemented by chaining SCAN_ALL_LUX with a per-Lux predicate that
 checks for an INSCRIPTION lumen. Non-leaf.//
 NEW SI_USER_BODY  /saved RA_SCAN_BODY of the caller
 
-NOLINK
-ITO SCAN_INSCRIPTIONS  Move    El1=RA_SCAN_BODY    Exit=SI_USER_BODY
-ITO SI_SETBODY         Move    El1=SI_BODY         Exit=RA_SCAN_BODY
-RVOCA SI_SCANJ           SCAN_ALL_LUX
-ITO SI_RESTORE         Move    El1=SI_USER_BODY    Exit=RA_SCAN_BODY
+CHAIN SCAN_INSCRIPTIONS
+    Move    El1=RA_SCAN_BODY    Exit=SI_USER_BODY
+    Move    El1=SI_BODY         Exit=RA_SCAN_BODY
+        RVOCA SI_SCANJ           SCAN_ALL_LUX
+    Move    El1=SI_USER_BODY    Exit=RA_SCAN_BODY
 RREDI SI_RET_r
 
 

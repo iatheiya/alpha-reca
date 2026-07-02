@@ -33,7 +33,7 @@ RA_LINK saved/restored automatically by the call stack (Voca/Redi)
 EXH_SAVED_FD  — saved RA_OB_FD       (private to shioreru.re)
 
 All cross-step return targets reference the next ITO Lux directly:
-ITO is self-referential (word = own lid), so
+"ITO" is self-referential (word = own lid), so
 Move El1=NEXT_LABEL Exit=RA_LINK
 Jump Exit=SUB
 places NEXT_LABEL's lid into RA_LINK.word, and SUB's terminating
@@ -42,7 +42,7 @@ JumpReg RA_LINK jumps there. No forward NEW + SETREF wrapper needed.
 DEPENDENCY: aspects.re,
 core/constants.re (C_0, C_1),
 aria/io.re (STDERR),
-runtime/regs.re (RA_LINK, RA_TW_LUX, RA_TMP, RA_TMP2, RA_FLAG),
+runtime/registers.re (RA_LINK, RA_TW_LUX, RA_TMP, RA_TMP2, RA_FLAG),
 aria/output.re (EMIT_STR_ENTRY, EMIT_INT_ENTRY, FLUSH, RA_OB_FD),
 runtime/layout.re (K_TRACE_POS),
 aria/accord.re (ACCORD_CHECK),

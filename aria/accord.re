@@ -7,7 +7,7 @@
 //information viewed differently.//
 
 //DEPENDENCY: aspects.re, core/constants.re, runtime/layout.re,//
-//aria/symphony.re, runtime/regs.re//
+//aria/symphony.re, runtime/registers.re//
 //============================================================//
 
 NEW ACCORD_RULE
@@ -78,7 +78,7 @@ RREDI ILS_RET
 
 
 //── SCAN_LUMEN_OF ─────────────────────────────────────────────//
-//Walks all lumens of RA_SCAN_LUX, calling RA_SCAN_BODY for each.//
+//Walks all lumina of RA_SCAN_LUX, calling RA_SCAN_BODY for each.//
 //Body ABI: RA_TW_LUMEN = current lumen address on entry.//
 //Body may read Rel via LR (aether[lumen+0]),//
 //Exit via LT (aether[lumen+1]),//
@@ -96,7 +96,12 @@ ITO SLO_CALL      Voca      El1=RA_SCAN_BODY   Exit=RA_LINK
 JZ    SLO_STOPCHK   RA_SCAN_STOP SLO_ADVANCE  //STOP==0 → advance; STOP!=0 → done//
 ITO SLO_STOPDONE  Jump      Exit=SLO_DONE
 /Inline lumen advance: was LX (8 steps including SR_GLX call).
-Now 3 steps: advance RA_TW_LUMEN by 2, read next rel, loop./
+/Now 3 steps: advance RA_TW_LUMEN by 2, read next rel, loop.
+/NOTE: this skips OVERFLOW_REL handling that SR_GLX had. Safe here
+/because SCAN_LUMEN_OF is only called on bootstrap rule-lux whose
+/lumen capacity is exactly pre-counted by the prepass — no overflow
+/occurs in practice. When PLAN_BOUND_NEXT.md is implemented,
+/OVERFLOW_REL disappears entirely and this note goes away./
 ITO SLO_ADVANCE   Add  El1=RA_TW_LUMEN El2=C_2 Exit=RA_TW_LUMEN
 ITO SLO_ADV_REL   Read El1=RA_TW_LUMEN         Exit=RA_SR_REL
 ITO SLO_LB        Jump      Exit=SLO_LOOP

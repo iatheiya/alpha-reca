@@ -36,7 +36,7 @@
 /Requires graph-linked chain (CHAIN_LINK applied first)./
 
 /DEPENDENCY: aspects.re, core/constants.re, runtime/layout.re,/
-/runtime/regs.re, aria/symphony.re, runtime/alloc.re, aria/output.re/
+/runtime/registers.re, aria/symphony.re, runtime/alloc.re, aria/output.re/
 /============================================================/
 
 /── Registers ─────────────────────────────────────────────────/
@@ -99,9 +99,10 @@ JEQ CSP_WALKLOOP RA_TMP3 RA_CHAIN_OFF CSP_WALK_LAND
 /advance via Next Lumen/
 WALK_ONE CSP_WLK RA_CHAIN_CUR Next
 JZ CSP_AFTER_WALK RA_SR_OUT CSP_WALK_LAND
-ITO CSP_ADVC        Move      El1=RA_SR_OUT      Exit=RA_CHAIN_CUR
-ITO CSP_INCI        Add       El1=RA_TMP3 El2=C_1 Exit=RA_TMP3
-ITO CSP_WLB         Jump      Exit=CSP_WALKLOOP
+CHAIN CSP_ADVC
+    Move  El1=RA_SR_OUT  Exit=RA_CHAIN_CUR
+    Add   El1=RA_TMP3    El2=C_1 Exit=RA_TMP3
+    Jump  Exit=CSP_WALKLOOP
 /at offset-1: find Next Lux (= tail), unlink/
 ITO CSP_WALK_LAND       Move     El1=RA_CHAIN_CUR   Exit=RA_CHAIN_CUR
 WALK_ONE CSP_FINDNXT RA_CHAIN_CUR Next

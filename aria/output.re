@@ -23,7 +23,7 @@ DS_START: 20 consecutive Lux used by EMIT_INT_ENTRY for digit reversal.
 RA_DS_BASE.word = DS_START's Lux ID.
 
 ── WHY SETREF FOR BASES ──────────────────────────────────────
-BLOCK creates Lux whose word = 0 by default. Using the block name
+"BLOCK" creates Lux whose word = 0 by default. Using the block name
 directly as El1 would read word=0 → address 0 (NULL sentinel).
 The SETREF'd register holds the actual Lux ID of the block start.
 
@@ -33,11 +33,11 @@ Both are private to output.re — callers must not use them directly.
 Callers may freely use RA_RET2 for their own nested-call needs.
 
 SYSCALL CONVENTION (used in PB_FLUSH):
-Set els via: Move El1=VALUE Exit=SC_Ax
+"Set" els via: Move El1=VALUE Exit=SC_Ax
 SC_* are self-referential (SETREF SC_X SC_X), so Python reads
 mem[SC_X_ID] = SC_X.word = the value set by Move.
 
-DEPENDENCY: aspects.re, core/constants.re, aria/ascii.re, runtime/regs.re,
+DEPENDENCY: aspects.re, core/constants.re, aria/ascii.re, runtime/registers.re,
 aria/io.re (STDOUT default sink),
 runtime/registers.re, target/linux_generic.re
 
@@ -95,37 +95,52 @@ NEWSET NL_STR "\n"
 ── PUT_BYTE: write RA_BYTE into packed OB buffer ─────────────
 //Packed layout: 8 bytes per lux, little-endian.
   RA_OB_SHIFT — persistent bit counter within lux: 0, 8, 16, 24, 32, 40, 48, 56 then 0
-  RA_OB_ADDR  — persistent lux address (OB_BASE + OB_POS>>3), updated only on lux boundary
-  RA_OB_POS   — byte position 0..OB_SIZE-1 (still used for flush check and PB_FLUSH SC_A2)
+  RA_OB_ADDR  — persistent lux address (OB_BASE + OB_POS>>3), updated on lux boundary
+  RA_OB_POS   — byte position 0..OB_SIZE-1 (used for flush check and PB_FLUSH SC_A2)
+
+Invariant: RA_OB_ADDR always points at the CURRENT lux (the one we write into).
+RA_OB_SHIFT=0 means we are at the start of the current lux (first byte position).
+Advance of RA_OB_ADDR happens in the hot path AFTER writing 8 bytes,
+NOT in PB_ZERO_LUX — so that the very first PUT_BYTE writes into OB_BASE itself.
+
 Hot path (7 of 8 calls): 11 steps.
-New-lux path (1 of 8 calls): 14 steps.
-Average ~11.4 steps vs old ~13.5.//
+New-lux path (1 of 8 calls): 13 steps (advance addr + clear + reset + write).//
 JZ PUT_BYTE RA_OB_SHIFT PB_ZERO_LUX
 /write byte into current lux using cached RA_OB_ADDR
-ITO PB_SHL      Left      El1=RA_BYTE     El2=RA_OB_SHIFT Exit=RA_FLAG  /shift byte into bit position
-ITO PB_RD       Read      El1=RA_OB_ADDR  Exit=RA_TMP                   /read existing lux
-ITO PB_OR       Add       El1=RA_TMP      El2=RA_FLAG    Exit=RA_TMP    /OR in shifted byte
-ITO PB_STORE    Write     El1=RA_OB_ADDR  El2=RA_TMP                    /write back
-ITO PB_INC      Add       El1=RA_OB_POS   El2=C_1        Exit=RA_OB_POS /pos++
-ITO PB_SHFT     Add       El1=RA_OB_SHIFT El2=C_8        Exit=RA_OB_SHIFT /advance bit counter
+CHAIN PB_SHL
+    Left      El1=RA_BYTE     El2=RA_OB_SHIFT Exit=RA_FLAG
+    Read      El1=RA_OB_ADDR  Exit=RA_TMP
+    Add       El1=RA_TMP      El2=RA_FLAG    Exit=RA_TMP
+    Write     El1=RA_OB_ADDR  El2=RA_TMP
+    Add       El1=RA_OB_POS   El2=C_1        Exit=RA_OB_POS
+    Add       El1=RA_OB_SHIFT El2=C_8        Exit=RA_OB_SHIFT
+JEQ PB_SHFT64 RA_OB_SHIFT C_64 PB_ADV_LUX  /shift reached 64 → move to next lux
 JEQ PB_FULL RA_OB_POS OB_SIZE PB_FLUSH
 RREDI PB_DONE
 
-/PB_ZERO_LUX: first byte of new lux — advance RA_OB_ADDR, clear new lux, reset shift
+/PB_ADV_LUX: shift reached 64 → advance RA_OB_ADDR, check flush
 NOLINK
-ITO PB_ZERO_LUX Add  El1=RA_OB_ADDR  El2=C_1        Exit=RA_OB_ADDR  /advance to next lux
-ITO PBZ_CLR      Write El1=RA_OB_ADDR El2=C_0                         /clear it (lazy zero)
-CLEAR PBZ_RSH RA_OB_SHIFT
-ITO PBZ_GO       Jump  Exit=PB_SHL                                     /continue with write
+ITO PB_ADV_LUX  Add   El1=RA_OB_ADDR  El2=C_1        Exit=RA_OB_ADDR  /advance to next lux
+CLEAR PB_ADV_RSH RA_OB_SHIFT                                            /reset shift to 0
+JEQ PB_ADV_FULL RA_OB_POS OB_SIZE PB_FLUSH
+RREDI PB_ADV_DONE
+
+/PB_ZERO_LUX: RA_OB_SHIFT==0 on entry — clear current lux and write first byte.
+/RA_OB_ADDR already points at the correct lux (set by init or by PB_ADV_LUX).
+/No advance here — the invariant is that RA_OB_ADDR is already correct.
+NOLINK
+ITO PB_ZERO_LUX Write El1=RA_OB_ADDR El2=C_0                          /clear lux (lazy zero)
+ITO PBZ_GO      Jump  Exit=PB_SHL                                      /write byte at shift=0
 
 ── PB_FLUSH: drain OB to RA_OB_FD ────────────────────────────
 //RA_LINK is preserved across PB_FLUSH; its final JumpReg returns to
 whoever set RA_LINK (PB_FULLJ caller or FLUSH caller). This is what
 lets FLUSH be a one-instruction guard that tail-jumps here.//
-ITO PB_FLUSH    Move    El1=RA_OB_FD          Exit=SC_A0
-ITO PB_FX1      Move    El1=RA_OB_BASE        Exit=SC_A1
-ITO PB_FX2      Move    El1=RA_OB_POS         Exit=SC_A2
-ITO PB_SETNR    Move    El1=SYS_WRITE_PACKED  Exit=SC_NR
+CHAIN PB_FLUSH
+    Move  El1=RA_OB_FD          Exit=SC_A0
+    Move  El1=RA_OB_BASE        Exit=SC_A1
+    Move  El1=RA_OB_POS         Exit=SC_A2
+    Move  El1=SYS_WRITE_PACKED  Exit=SC_NR
 ITO PB_SC       Exire
 CLEAR PB_RST RA_OB_POS
 CLEAR PB_RST_SH RA_OB_SHIFT
@@ -177,8 +192,8 @@ RVOCA EPS_PB PUT_BYTE
 ITO EPS_ADVSHIFT  Add       El1=RA_PR_SHIFT  El2=C_8        Exit=RA_PR_SHIFT
 JEQ EPS_BLB RA_PR_SHIFT C_64 EPS_NEXTWORD
 ITO EPS_BLB2      Jump      Exit=EPS_EXTB
-/advance to next packed-string chunk (DATA_LUX_MIN=2 luces: [word, 0])
-ITO EPS_NEXTWORD  Add       El1=RA_TW_LUX   El2=C_2        Exit=RA_TW_LUX
+/advance to next packed-string chunk (stride=1: consecutive luces, 8 bytes per lux)
+ITO EPS_NEXTWORD  Add       El1=RA_TW_LUX   El2=C_1        Exit=RA_TW_LUX
 ITO EPS_WLBE      Jump      Exit=EMIT_PACKED_STR
 RREDI EPS_DONE
 ── EMIT_INT_ENTRY: emit RA_TMP2 as signed decimal integer ───

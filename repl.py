@@ -16,12 +16,14 @@ import sys
 import os
 import tempfile
 
-from interpreter import Interpreter
-from loader import load_symbols, freeze as do_freeze, _BIN, _SYM
-from symphony import ITO_SIZE
-
 _HERE = os.path.dirname(os.path.abspath(__file__))
+# If this file is in a subdirectory (e.g. tooling/), root is one level up.
+_ROOT = _HERE if os.path.exists(os.path.join(_HERE, 'symphony.py')) else os.path.dirname(_HERE)
+sys.path.insert(0, _ROOT)
 
+from interpreter import Interpreter
+from loader import load_symbols, freeze as do_freeze, _BIN, _SYM, load_or_freeze
+from symphony import ITO_SIZE
 
 def _capture_fd1(fn) -> str:
     """Capture fd-1 (stdout) writes from Reca's SYS_WRITE syscalls."""
@@ -48,15 +50,7 @@ def boot() -> tuple:
     on the fast path; on the cold path it reuses the freshly built loader
     state in aether (no redundant thaw + .sym re-parse).
     """
-    if os.path.exists(_BIN) and os.path.exists(_SYM):
-        interp = Interpreter()
-        interp.aether.thaw(_BIN)
-        symbols = load_symbols()
-    else:
-        loader = do_freeze()
-        interp  = loader.interp
-        symbols = loader.symbols
-    interp.update_relations(symbols)
+    interp, symbols = load_or_freeze()
     interp._symbol_names = {v: k for k, v in symbols.items()}
     return interp, symbols
 
@@ -65,8 +59,8 @@ def _find_entry(interp, name: str | None = None) -> int:
     """Find entry point: by name, or scan for lux with Entry lumen → Yaku.
 
     Entry points are marked via: LINK MyFunc Entry Yaku
-    ITO luces store extra lumens (from LINK commands) starting at slot 7 (ITO_SIZE).
-    Data luces store lumens starting at slot 1.
+    ITO luces store extra lumina (from LINK commands) starting at slot 7 (ITO_SIZE).
+    Data luces store lumina starting at slot 1.
     Lux kind: slot 1 != 0 → ITO (op field set); slot 1 == 0 → Data.
     Checks (rel=Entry, exit=Yaku) in the appropriate lumen region.
     """
@@ -123,7 +117,7 @@ def _inject_reca_init(ir: str) -> str:
 
     Used by both --self-compile and --combine paths.
     """
-    ri_path = os.path.join(_HERE, 'reca_init.ll')
+    ri_path = os.path.join(_ROOT, 'reca_init.ll')
     if not os.path.exists(ri_path):
         return ir
     with open(ri_path) as f:
@@ -200,7 +194,7 @@ if __name__ == "__main__":
         print(f"Aether: {used} luces used  entry: {sym.get(entry, entry)}",
               file=sys.stderr)
         captured = [0]
-        ver_path = os.path.join(_HERE, 'version')
+        ver_path = os.path.join(_ROOT, 'version')
         ver = open(ver_path).read().strip() if os.path.exists(ver_path) else '0'
         ir = _capture_fd1(lambda: captured.__setitem__(
             0, interp.execute_aether(entry, progress_every=prog, sym=sym)))

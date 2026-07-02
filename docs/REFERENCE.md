@@ -66,7 +66,7 @@ Jumps to `dest` if `cond == 0`. Auto-suffix: MA3=`_J`, MA4=`_K`.
 `FUNC`/`ENDFUNC` and the `CS_PUSH`/`CS_POP`/`CS_SAVE_REG`/`CS_REST_REG`
 subroutines they generated have been **removed** (zero callers project-wide).
 RA_LINK is saved/restored automatically by the call stack on every
-`Voca`/`Redi` — see `aria/regs.re`. A normal function is just:
+`Voca`/`Redi` — see `registers.re`. A normal function is just:
 ```
 NEWREF name body_start
 NOLINK
@@ -84,7 +84,7 @@ correctly at any depth via `RA_SP`.
 `RCALL`/`RRET` (an inline call stack using a fixed 1024-entry array,
 `BS_CS_BUF_000`/`BS_CS_SP`) have been **removed** — zero callers project-wide.
 The automatic call stack (`RA_SP`, pushed/popped by every `Voca`/`Redi`, see
-`aria/regs.re`) replaced this entirely.
+`registers.re`) replaced this entirely.
 
 #### `RCALL_AT name sub landing`
 ```
@@ -100,7 +100,7 @@ RCALL_AT-based code paths as non-functional until this is fixed.
 
 ---
 
-### Graph (lumens)
+### Graph (lumina)
 
 #### `LINK_OP name src rel exit`
 ```
@@ -299,7 +299,7 @@ All `RA_` registers below are global to the entire Aether.
 
 ---
 
-### Core registers (`regs.re`)
+### Core registers (`registers.re`)
 
 | Register | Description |
 |----------|-------------|
@@ -363,7 +363,7 @@ The loader sets these before calling each load-time macro.
 
 ---
 
-### Loader / tokenizer (`bootstrap.re`, `registers.re`)
+### Loader file-read state (`registers.re`)
 
 | Register | Description |
 |----------|-------------|
@@ -374,22 +374,34 @@ The loader sets these before calling each load-time macro.
 | `RA_LOAD_TLEN` | Length of the last token in bytes. |
 | `RA_LOAD_HASH` | djb2 hash of the current token. |
 | `RA_LOAD_INDENT` | Current indent level (0 = none, 1 = one level). |
+
+---
+
+### Interner (`intern.re`)
+
+| Register | Description |
+|----------|-------------|
 | `RA_BS_RESULT` | Result of BS_INTERN / BS_LOOKUP (lux address or 0). |
-| `RA_BS_EL0..3` | Resolved elements 0–3. |
-| `RA_BS_ELC` | Count of recognized elements. |
-| `RA_BS_FLAG` | Boolean result inside bootstrap. |
-| `RA_BS_TMP` / `RA_BS_TMP2` / `RA_BS_TMP3` | Scratch for bootstrap. |
-| `RA_BS_FIDX` | Index into file list. |
-| `RA_BS_FPATH` | Packed-string address of current file path. |
+| `RA_BS_EL0` | First element addr (resolved by saku.re dispatch). |
+| `RA_BS_EL1` | Second element addr. |
+| `RA_BS_ELC` | Count of recognized elements (also used by SWITCH macro in macros.re). |
+
+---
+
+### Tokenizer scratch (`lexer.re`)
+
+| Register | Description |
+|----------|-------------|
+| `RA_BS_FLAG` | Boolean result inside the tokenizer. |
+| `RA_BS_TMP` / `RA_BS_TMP2` / `RA_BS_TMP3` | Scratch for the tokenizer. |
 | `RA_BS_PACK_WORD` | Accumulates bytes when packing a string (up to 8 per lux). |
 | `RA_BS_PACK_SHIFT` | Bit-shift during packing (0, 8, 16, …, 56). |
 | `RA_BS_PACK_SIDX` | Source index in tokbuf (0..tlen-1). |
 | `RA_BS_PACK_DST` | Destination pointer in Aether during packing. |
-| `RA_BS_POS_SLOT` | Next positional slot (1..7) for ITO arguments. |
 
 ---
 
-### Allocator and lumens (`alloc.re`)
+### Allocator and lumina (`alloc.re`)
 
 | Register | Description |
 |----------|-------------|
@@ -401,8 +413,8 @@ The loader sets these before calling each load-time macro.
 | `RA_FLUX_BOTTOM` | Lower bound of flux zone. Written at freeze. |
 | `RA_FLUX_TOP` | Upper bound of flux zone. |
 | `RA_ALLOC_TMP` / `RA_ALLOC_TMP2` / `RA_ALLOC_TMP3` | Scratch for allocator. |
-| `RA_AN_NLUMENS` | Requested lumen count for ALLOC_LUX_N. |
-| `RA_AL_POS` | Current position when scanning lumens (rel lux). |
+| `RA_AN_NLUMINA` | Requested lumen count for ALLOC_LUX_N. |
+| `RA_AL_POS` | Current position when scanning lumina (rel lux). |
 | `RA_RL_POS` | Position when removing a lumen. |
 
 ---
@@ -419,7 +431,7 @@ registers:
 |----------|-------------|
 | `RA_FRAME_SIZE` | Frame size in luces (= 8). Written at freeze. Read by the interpreter on every Voca/Redi. |
 | `RA_STACK_GUARD` | Lower stack bound (STACK_BOTTOM). Written at freeze. Reserved for future overflow detection (not yet checked). |
-| `RA_CS_TMP` | General scratch register (also used by bootstrap.re). |
+| `RA_CS_TMP` | General scratch register (also used by intern.re). |
 
 ---
 

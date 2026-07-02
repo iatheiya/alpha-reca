@@ -17,7 +17,10 @@ import sys
 import os
 import tempfile
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+_HERE = os.path.dirname(os.path.abspath(__file__))
+# If this file is in a subdirectory (e.g. tooling/), root is one level up.
+_ROOT = _HERE if os.path.exists(os.path.join(_HERE, 'symphony.py')) else os.path.dirname(_HERE)
+sys.path.insert(0, _ROOT)
 
 from loader import freeze, Loader, fresh_loader as _fresh_loader
 
@@ -138,7 +141,7 @@ def test_nop(bin, sym_file, bump, water):
 
 @test('JEQ')
 def test_jeq(bin, sym_file, bump, water):
-    """JEQ name a b dest → Equal(a,b)→flag; JumpIf(flag)→dest; NOP"""
+    """JEQ name a b dest → Equal(a,b)→flag; JumpIf(flag)→dest (optimized: no _K NOP)"""
     py_frag = """
 NEW TEST_A
 NEW TEST_B
@@ -154,14 +157,13 @@ NEW TEST_JEQFLAG
 NOLINK
 ITO TEST_JEQN   Equal   El1=TEST_A    El2=TEST_B    Exit=TEST_JEQFLAG
 ITO TEST_JEQN_J JumpIf  El1=TEST_JEQFLAG            Exit=TEST_DEST
-ITO TEST_JEQN_K Move    El1=C_0                     Exit=C_0
 """
     ldr_py, ae_py = load_fragment(py_frag, bin, sym_file, bump, water)
     ldr_re, ae_re = load_fragment(re_frag, bin, sym_file, bump, water)
 
     results = []
     all_ok = True
-    for sym, slots in [('TEST_JEQN', (1,2,4)), ('TEST_JEQN_J', (1,4)), ('TEST_JEQN_K', (1,2,4))]:
+    for sym, slots in [('TEST_JEQN', (1,2,4)), ('TEST_JEQN_J', (1,4))]:
         ok, detail = compare_luces('JEQ', ldr_py, ae_py, ldr_re, ae_re, sym, slots)
         # For JEQ the flag lux addr will differ (different bump), but op/e1/exit logic is same
         # We check op and exit structure, skip e2 flag addr comparison for _J lux
@@ -176,7 +178,15 @@ ITO TEST_JEQN_K Move    El1=C_0                     Exit=C_0
                     results[-1] += '\n    (flag addr differs as expected — op matches ✓)'
                     continue
             all_ok = False
+    # TEST_JEQN_K should NOT exist on either side — _K was removed as an
+    # unnecessary NOP. JumpIf's own slot 5 (next) is the fall-through point.
+    k_py = ldr_py.symbols.get('TEST_JEQN_K', 0)
+    k_re = ldr_re.symbols.get('TEST_JEQN_K', 0)
+    if k_py or k_re:
+        all_ok = False
+        results.append(f"  TEST_JEQN_K should not exist: py={k_py} re={k_re}")
     return all_ok, '\n'.join(results)
+
 
 
 @test('NOLINK')
@@ -214,8 +224,8 @@ def test_setref(bin, sym_file, bump, water):
 
 def run_tests(filter_name=None):
     import os as _os
-    bin = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), 'reca.bin')
-    sym = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), 'reca.sym')
+    bin = _os.path.join(_ROOT, 'reca.bin')
+    sym = _os.path.join(_ROOT, 'reca.sym')
     if not (_os.path.exists(bin) and _os.path.exists(sym)):
         print("Building reca.bin...", end=' ', flush=True)
         freeze()
@@ -243,7 +253,70 @@ def run_tests(filter_name=None):
     return failed == 0
 
 
+# ── Low-level BS lexer tests (from test_bs_read_token_chunk.py / test_bs_token_value.py) ──
+# Run with: python3 test_macros.py --bs-read-chunk CHUNK_FILE
+#           python3 test_macros.py --bs-token-value "SOME_TOKEN"
+
+def _test_bs_read_chunk(chunk_path):
+    """Feed a raw byte chunk into BS_READ_TOKEN and report tokens found."""
+    from loader import freeze
+    l = freeze(); R = l.symbols; interp = l.interp; a = interp.aether.aether
+    try:
+        chunk = open(chunk_path, 'rb').read()
+    except FileNotFoundError:
+        print(f"[bs-read-chunk] File not found: {chunk_path}"); return
+    readbuf_base = int(a[R['BS_READBUF_BASE']])
+    for i, b in enumerate(chunk):
+        a[readbuf_base + i] = b
+    a[R['RA_LOAD_RPOS']] = 0
+    a[R['RA_LOAD_RLEN']] = len(chunk)
+    # Run BS_READ_TOKEN repeatedly until EOF
+    BS_READ_TOKEN = R.get('BS_READ_TOKEN')
+    RA_LOAD_TLEN  = R.get('RA_LOAD_TLEN')
+    BS_TOKBUF     = R.get('BS_TOKBUF_BASE')
+    if not BS_READ_TOKEN:
+        print("[bs-read-chunk] BS_READ_TOKEN not found"); return
+    tokens = []
+    for _ in range(200):
+        interp.execute_aether(BS_READ_TOKEN)
+        tlen = int(a[RA_LOAD_TLEN])
+        if tlen == 0: break
+        tok = bytes(int(a[BS_TOKBUF + i]) & 0xFF for i in range(tlen))
+        tokens.append(tok.decode('utf-8', 'replace'))
+    print(f"[bs-read-chunk] Tokens from {chunk_path} ({len(chunk)} bytes): {len(tokens)} found")
+    for t in tokens:
+        print(f"  {t!r}")
+
+
+def _test_bs_token_value(text):
+    """Feed a token string into BS_TOKEN_VALUE and report the resolved address."""
+    from loader import freeze
+    l = freeze(); R = l.symbols; interp = l.interp; a = interp.aether.aether
+    tokbuf_base = int(a[R['BS_TOKBUF_BASE']])
+    for i, ch in enumerate(text):
+        a[tokbuf_base + i] = ord(ch)
+    a[R['RA_LOAD_TLEN']] = len(text)
+    BS_TOKEN_VALUE = R.get('BS_TOKEN_VALUE')
+    RA_BS_RESULT   = R.get('RA_BS_RESULT')
+    if not BS_TOKEN_VALUE:
+        print("[bs-token-value] BS_TOKEN_VALUE not found"); return
+    print(f"[bs-token-value] Before: tlen={len(text)} token={text!r}")
+    interp.execute_aether(BS_TOKEN_VALUE)
+    result = int(a[RA_BS_RESULT]) if RA_BS_RESULT else -1
+    sym_rev = {v: k for k, v in R.items()}
+    print(f"[bs-token-value] RA_BS_RESULT = {result} ({sym_rev.get(result, '?')})")
+
+
+# Extend __main__ to handle --bs-read-chunk and --bs-token-value
 if __name__ == '__main__':
-    filter_name = sys.argv[1] if len(sys.argv) > 1 else None
-    ok = run_tests(filter_name)
-    sys.exit(0 if ok else 1)
+    args = sys.argv[1:]
+    if '--bs-read-chunk' in args:
+        idx = args.index('--bs-read-chunk')
+        _test_bs_read_chunk(args[idx+1] if idx+1 < len(args) else '')
+    elif '--bs-token-value' in args:
+        idx = args.index('--bs-token-value')
+        _test_bs_token_value(args[idx+1] if idx+1 < len(args) else '')
+    else:
+        filter_name = args[0] if args else None
+        ok = run_tests(filter_name)
+        sys.exit(0 if ok else 1)

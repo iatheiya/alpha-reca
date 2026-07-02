@@ -3,7 +3,7 @@
 ── What is a flux ────────────────────────────────────────────────────────
 Flux = Data Lux of arbitrary structure, living in the flux zone
 (FLUX_BOTTOM <= addr < STACK_BOTTOM). Detected by addr >= FLUX_BOTTOM
-(one compare, only on explicit jump — hot path never checks this).
+(one compare, only on explicit jump — line path never checks this).
 
 Structure:
   [word = type_lux_addr, slot1, slot2, ..., slotN]
@@ -19,7 +19,7 @@ and launches them via Exire(clone). The core provides only the structure.
 Allocation: ALLOC_FLUX_ZONE (alloc.re). bump allocator in flux zone.
 No predefined types — type lux is created dynamically by caller.
 
-DEPENDENCY: aspects.re  constants.re  regs.re  alloc.re//
+DEPENDENCY: aspects.re  constants.re  registers.re  alloc.re//
 
 ── Registers ──────────────────────────────────────────────────────────────────
 NEW RA_FX_SRC      /flux address (input to read functions)

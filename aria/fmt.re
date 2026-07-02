@@ -7,13 +7,13 @@ Elements are a singly-linked list via FMT_ARG_NEXT_REL.
 Non-leaf — RA_LINK is saved/restored automatically by the call stack.
 
 Format string traversal: Add C_1 (base layer, fast — sequential Lux IDs).
-For graph-based traversal use tether.re aria (CHAIN_EMIT_FMT).
+"For" graph-based traversal use tether.re aria (CHAIN_EMIT_FMT).
 
 Guard: if RA_FMT_ARG_CUR == 0 when an arg is expected → End.
 This prevents silent reads of Aether[0] (NULL sentinel) when the
 caller supplies fewer elements than the format string expects.
 
-DEPENDENCY: aspects.re, core/constants.re, runtime/regs.re,
+DEPENDENCY: aspects.re, core/constants.re, runtime/registers.re,
 aria/output.re, aria/symphony.re//
 
 NEWREF FMT_ARG_NEXT_REL

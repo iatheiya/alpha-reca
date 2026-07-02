@@ -83,7 +83,7 @@ while pc != 0:
     else:                   pc = exec_flux(raw)  // flux: structured parallel branch
 ```
 
-ITO lux layout (7 base slots + optional extra LINK lumens):
+ITO lux layout (7 base slots + optional extra LINK lumina):
 ```
 slot 0: word  = self-ref (aether[addr] = addr)
 slot 1: op    = Aspect Lux address
@@ -91,8 +91,8 @@ slot 2: e1    = first operand
 slot 3: e2    = second operand
 slot 4: exit  = result destination / jump target / RA_LINK addr for Voca
 slot 5: next  = 0 → step (pc + ITO_SIZE); non-zero → warp or flux target
-slot 6: pad   = 0  (terminates lumen scan before extra lumens)
-slot 7+:       extra LINK lumens: (rel, exit) pairs, 0-terminated
+slot 6: pad   = 0  (terminates lumen scan before extra lumina)
+slot 7+:       extra LINK lumina: (rel, exit) pairs, 0-terminated
 ```
 
 Data lux layout:
@@ -173,7 +173,7 @@ a fixed OS escape. IDs are stable for the current Aria.
 `Voca` + `Redi` are the calling convention: Voca saves the return address into
 `RA_LINK` (pushing the old value first), Redi jumps to it (popping afterward).
 The call stack (`RA_SP`) makes this correct at any nesting depth automatically —
-no per-function save/restore needed. See `aria/regs.re` for the full
+no per-function save/restore needed. See `registers.re` for the full
 description.
 
 ### Relations (`relations.re`) — interpreter conventions, not hardware

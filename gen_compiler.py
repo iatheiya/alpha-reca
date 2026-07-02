@@ -1,14 +1,13 @@
 #!/usr/bin/env python3
 """
-gen_compiler.py — Generator for preamble.re, compiler_sf.re, and aria/layout.re
+gen_compiler.py — Generator for generated/{preamble,compiler_sf,layout}.re
 
 Responsibilities:
   1. Read preamble_template.ll, substitute Aether layout constants,
      and pack the result as PREAM_* Lux byte chains in preamble.re.
-  2. Write aria/layout.re with Aether aether layout constants.
+  2. Write generated/layout.re with Aether layout constants (K_XLEN, K_AETHER_SIZE).
   3. Generate compiler_sf.re with XLEN-dependent SF_* string values.
      (XI.2 fix: replaces regex-patching of yaku.re with a generated file.)
-  4. Call freeze() to rebuild reca.bin.
 
 Python is a BLIND ASSEMBLER here. It does NOT know LLVM IR semantics.
 The IR lives in preamble_template.ll — edit that file, not this one.
@@ -20,30 +19,31 @@ XI.2 fix — single source of truth for XLEN-dependent SF_* strings:
   Now:
     yaku.re   declares NEW SF_*  (name + no value — word stays 0 until SET)
     compiler_sf.re (generated here) provides SET SF_* with correct XLEN values
-  Changing XLEN requires editing symphony.py (XLEN constant) and re-running gen_compiler.py.
+  Changing XLEN requires editing symphony.py (XLEN constant) and re-running.
 
-Usage:
-  python3 gen_compiler.py          # writes preamble.re + compiler_sf.re + aria/layout.re + reca.bin
-  python3 gen_compiler.py --check  # prints first 20 lines of preamble, does not write
+Usage (standalone):
+  python3 gen_compiler.py          # generate files + freeze + reca_init.ll
+  python3 gen_compiler.py --check  # print first 20 lines of preamble, no writes
+  python3 gen_compiler.py --no-freeze  # generate files only, skip freeze
+
+Usage (from loader.py / freeze()):
+  import gen_compiler; gen_compiler.generate_artifacts()
+  Generates generated/layout.re, generated/preamble.re, generated/compiler_sf.re.
+  freeze() is called by loader.py itself after generate_artifacts() returns.
 """
 import os
 import sys
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, _HERE)
+# If this file is in a subdirectory (e.g. tooling/), root is one level up.
+# Marker: loader.py lives at the project root.
+_ROOT = _HERE if os.path.exists(os.path.join(_HERE, 'symphony.py')) else os.path.dirname(_HERE)
+
+sys.path.insert(0, _ROOT)
 
 from symphony import AETHER_SIZE, XLEN
 
-# Aria convention: these three luces are reserved by layout.re for
-# bookkeeping. Python does not know about them — gen_compiler hardcodes
-# them ONLY when generating aria/layout.re (which is itself an aria file).
-# Everywhere else (Python interpreter, freeze logic) sees them as ordinary
-# luces. They live here as the single source of truth.
-_K_CURSOR_LUX    = 1   # aether[1] = current bump position
-_K_WATERMARK_LUX = 2   # aether[2] = high-water mark (max addr touched)
-_K_TRACE_POS_LUX = 3   # aether[3] = trace write pos (0 = tracing off)
-
-_TEMPLATE = os.path.join(_HERE, 'preamble_template.ll')
+_TEMPLATE = os.path.join(_ROOT, 'preamble_template.ll')
 
 
 def _build_preamble() -> str:
@@ -60,10 +60,10 @@ def _build_preamble() -> str:
     text = '\n'.join(lines).strip() + '\n'
 
     substitutions = {
-        '{{TOTAL_SIZE}}':           str(AETHER_SIZE),
-        '{{ALLOC_PTR_ADDR}}':       str(_K_CURSOR_LUX),    # cursor lux
-        '{{K_CURSOR_LUX}}':        str(_K_CURSOR_LUX),
-        '{{K_WATERMARK_LUX}}':     str(_K_WATERMARK_LUX),
+        '{{TOTAL_SIZE}}':      str(AETHER_SIZE),
+        '{{ALLOC_PTR_ADDR}}':  '1',   # K_CURSOR lives at aether[1] (alloc.re NEW K_CURSOR)
+        '{{K_CURSOR_LUX}}':    '1',
+        '{{K_WATERMARK_LUX}}': '2',
     }
     for placeholder, value in substitutions.items():
         text = text.replace(placeholder, value)
@@ -110,7 +110,6 @@ def _build_compiler_sf(xlen: int) -> list:
             f'define i{xlen} @'),
         ('SF_GEP_MID',
             f' x i{xlen}], ptr @heap, i{xlen} 0, i{xlen} '),
-        # SF_LOAD_SFX removed — superseded by SF_LOAD_IGEP_PRE inline GEP
         ('SF_JR_LOAD',
             f'  %jr_t = load i{xlen}, ptr @jr_slot\\n'
             f'  switch i{xlen} %jr_t, label %L_jrerr [\\n'),
@@ -127,116 +126,130 @@ def _build_compiler_sf(xlen: int) -> list:
     return lines
 
 
+def generate_artifacts(verbose: bool = True) -> None:
+    """Generate layout.re, preamble.re, compiler_sf.re from current symphony.py constants.
+
+    Called by loader.py freeze() before loading .re files, so that
+    aria/layout.re (K_XLEN, K_AETHER_SIZE) is always up to date.
+
+    Does NOT call freeze() — the caller (loader.py) does that.
+    Does NOT generate reca_init.ll — that requires a frozen binary.
+    """
+    def _log(msg):
+        if verbose:
+            print(msg, file=sys.stderr)
+
+    # aria/layout.re — K_AETHER_SIZE and K_XLEN only.
+    # K_CURSOR/K_WATERMARK/K_TRACE_POS/K_STACK_TOP live in alloc.re.
+    layout_path = os.path.join(_ROOT, 'generated', 'layout.re')
+    os.makedirs(os.path.dirname(layout_path), exist_ok=True)
+    layout_lines = [
+        '// aria/layout.re — Aether layout constants. Generated by gen_compiler.py. DO NOT EDIT. //',
+        '// K_AETHER_SIZE and K_XLEN are the only constants here. //',
+        '// K_CURSOR/K_WATERMARK/K_TRACE_POS/K_STACK_TOP live in alloc.re (runtime). //',
+        '',
+    ]
+    for lname, lval in [
+        ('K_AETHER_SIZE', AETHER_SIZE),
+        ('K_XLEN',        XLEN),
+    ]:
+        layout_lines.append(f'NEWSET {lname} {lval}')
+    layout_lines.append('')
+    with open(layout_path, 'w') as lf:
+        lf.write('\n'.join(layout_lines))
+    _log(f'Wrote {layout_path}')
+
+    # preamble.re — packed LLVM IR preamble
+    preamble_text = _build_preamble()
+    packed = _pack_bytes(preamble_text)
+    out = [
+        '// preamble.re — GENERATED by gen_compiler.py. DO NOT EDIT. //',
+        '// PREAM_* Lux: packed LLVM IR helpers from preamble_template.ll. //',
+        '// Regenerate: python3 gen_compiler.py //',
+        '',
+        '// ── PREAM_* Lux ──────────────────────────────────────────────────────────//',
+    ]
+    for i, word in enumerate(packed):
+        out.append(f'NEWSET PREAM_{i:04d} {word}')
+    out.append('')
+    out.append(f'// PREAM stats: {len(preamble_text)} bytes -> {len(packed)} Lux //')
+    out.append('')
+    out_path = os.path.join(_ROOT, 'generated', 'preamble.re')
+    with open(out_path, 'w') as f:
+        f.write('\n'.join(out) + '\n')
+    _log(f'Wrote {out_path}: {len(out)} lines ({len(packed)} PREAM Lux)')
+
+    # compiler_sf.re — XLEN-dependent SF_* strings
+    sf_lines = _build_compiler_sf(XLEN)
+    sf_path = os.path.join(_ROOT, 'generated', 'compiler_sf.re')
+    with open(sf_path, 'w') as f:
+        f.write('\n'.join(sf_lines) + '\n')
+    _log(f'Wrote {sf_path} (XLEN={XLEN})')
+
+
+def _needs_regen() -> bool:
+    """Return True if generated files are missing or older than symphony.py."""
+    symphony_mtime = os.path.getmtime(os.path.join(_ROOT, 'symphony.py'))
+    targets = [
+        os.path.join(_ROOT, 'generated', 'layout.re'),
+        os.path.join(_ROOT, 'generated', 'preamble.re'),
+        os.path.join(_ROOT, 'generated', 'compiler_sf.re'),
+    ]
+    for t in targets:
+        if not os.path.exists(t):
+            return True
+        if os.path.getmtime(t) < symphony_mtime:
+            return True
+    return False
 
 
 # ── main ──────────────────────────────────────────────────────────────────────
-check_only = '--check' in sys.argv
+if __name__ == '__main__':
+    if '--check' in sys.argv:
+        preamble_text = _build_preamble()
+        packed = _pack_bytes(preamble_text)
+        out = ['// preamble.re preview (first 20 lines):']
+        for i, word in enumerate(packed[:18]):
+            out.append(f'NEWSET PREAM_{i:04d} {word}')
+        for line in out:
+            print(line)
+        print(f'Total: {len(packed)} PREAM Lux, {len(preamble_text)} bytes')
+        sys.exit(0)
 
-out = []
-out.append('// preamble.re — GENERATED by gen_compiler.py. DO NOT EDIT. //')
-out.append('// PREAM_* Lux: packed LLVM IR helpers from preamble_template.ll. //')
-out.append('// Regenerate: python3 gen_compiler.py //')
-out.append('')
-out.append('// ── PREAM_* Lux ──────────────────────────────────────────────────────────//')
+    generate_artifacts(verbose=True)
 
-preamble_text = _build_preamble()
-packed = _pack_bytes(preamble_text)
+    if '--no-freeze' not in sys.argv:
+        # Full pipeline: freeze + reca_init.ll
+        from loader import freeze as _do_freeze, _BIN as _BIN
+        _do_freeze()
 
-for i, word in enumerate(packed):
-    out.append(f'NEWSET PREAM_{i:04d} {word}')
+        # Generate reca_init.ll from the freshly frozen binary.
+        # Authoritative static initialiser for the compiled binary.
+        from symphony import Aether, AETHER_SIZE as _AS, XLEN as _XLEN
+        _K_WATERMARK_LUX = 2
+        s = Aether()
+        s.thaw(_BIN)
+        a = s.aether
+        used = a[_K_WATERMARK_LUX] + 1 if a[_K_WATERMARK_LUX] > 0 else len(a)
 
-out.append('')
-out.append(f'// PREAM stats: {len(preamble_text)} bytes -> {len(packed)} Lux //')
-out.append('')
+        lines: list = []
+        lines.append('define void @reca_init() {')
+        lines.append('entry:')
+        for idx in range(used):
+            v = a[idx]
+            if v == 0:
+                continue
+            lines.append(
+                f'  store i{_XLEN} {v}, '
+                f'ptr getelementptr inbounds ([{_AS} x i{_XLEN}], '
+                f'ptr @heap, i{_XLEN} 0, i{_XLEN} {idx})'
+            )
+        lines.append('  ret void')
+        lines.append('}')
+        lines.append('')
 
-total_lines = len(out)
-
-if check_only:
-    for line in out[:20]:
-        print(line)
-    print(f'Total: {total_lines} lines, {len(packed)} PREAM Lux')
-    sys.exit(0)
-
-# Write aria/layout.re
-layout_path = os.path.join(_HERE, 'aria', 'layout.re')
-os.makedirs(os.path.dirname(layout_path), exist_ok=True)
-layout_lines = [
-    '// aria/layout.re — Aether layout constants. Generated by gen_compiler.py. DO NOT EDIT. //',
-    '// Canon: K_CURSOR.word=1 (bump pos), K_WATERMARK.word=2 (high-water), K_TRACE_POS.word=3 (trace). //',
-    '',
-]
-for lname, lval, lcomment in [
-    ('K_CURSOR',         _K_CURSOR_LUX,    'address of cursor lux (current bump position lives there)'),
-    ('K_WATERMARK',      _K_WATERMARK_LUX, 'address of watermark lux (max addr touched lives there)'),
-    ('K_TRACE_POS',      _K_TRACE_POS_LUX, 'address of trace-pos lux (0 = tracing off)'),
-    ('K_AETHER_SIZE',    AETHER_SIZE,       'total Aether array size in luces'),
-    ('K_XLEN',           XLEN,              'target word width in bits'),
-]:
-    layout_lines.append(f'NEWSET {lname} {lval}')
-layout_lines.append('')
-with open(layout_path, 'w') as lf:
-    lf.write('\n'.join(layout_lines))
-print(f'Wrote {layout_path}', file=sys.stderr)
-
-# Write preamble.re
-out_path = os.path.join(_HERE, 'preamble.re')
-with open(out_path, 'w') as f:
-    f.write('\n'.join(out) + '\n')
-print(f'Wrote {out_path}: {total_lines} lines ({len(packed)} PREAM Lux)',
-      file=sys.stderr)
-
-# Write compiler_sf.re (XI.2 fix: replaces regex patching of yaku.re)
-sf_lines = _build_compiler_sf(XLEN)
-sf_path = os.path.join(_HERE, 'compiler_sf.re')
-with open(sf_path, 'w') as f:
-    f.write('\n'.join(sf_lines) + '\n')
-print(f'Wrote {sf_path} (XLEN={XLEN})', file=sys.stderr)
-
-# Freeze
-# (rule_graphs.re removed: RO_* graphs are now built inline by loader.py during freeze)
-from loader import freeze as _do_freeze, _BIN as _BIN
-_do_freeze()
-
-# Generate reca_init.ll from the freshly frozen bin.
-# This is the authoritative static initialiser for the compiled binary:
-# it captures the clean Aether state (all Lux words, all Lumen, all system
-# luces) exactly as it exists after freeze — before any runtime execution.
-# yaku.re's EMIT_INIT_FUNC is removed; reca_init() now comes from here.
-def _build_reca_init_ll() -> str:
-    from symphony import Aether, AETHER_SIZE, XLEN as _XLEN
-    s = Aether()
-    s.thaw(_BIN)
-    a = s.aether
-    # Read the high-water mark from the lux K_WATERMARK points to.
-    # This is aria convention (K_WATERMARK.word = K_WATERMARK_LUX = 2),
-    # so we know it lives at aether[_K_WATERMARK_LUX] after freeze.
-    used = a[_K_WATERMARK_LUX] + 1 if a[_K_WATERMARK_LUX] > 0 else len(a)
-
-    lines: list[str] = []
-    lines.append('define void @reca_init() {')
-    lines.append('entry:')
-
-    # Emit store for every nonzero lux in used region.
-    # New layout is much smaller (no pool), so this is fast.
-    for idx in range(used):
-        v = a[idx]
-        if v == 0:
-            continue
-        lines.append(
-            f'  store i{_XLEN} {v}, '
-            f'ptr getelementptr inbounds ([{AETHER_SIZE} x i{_XLEN}], '
-            f'ptr @heap, i{_XLEN} 0, i{_XLEN} {idx})'
-        )
-
-    lines.append('  ret void')
-    lines.append('}')
-    lines.append('')
-    return '\n'.join(lines)
-
-
-_ri_path = os.path.join(_HERE, 'reca_init.ll')
-_ri_text = _build_reca_init_ll()
-with open(_ri_path, 'w') as _f:
-    _f.write(_ri_text)
-_nz = _ri_text.count('\n  store')
-print(f'Wrote {_ri_path}: {_nz} store instructions', file=sys.stderr)
+        _ri_path = os.path.join(_ROOT, 'reca_init.ll')
+        with open(_ri_path, 'w') as _f:
+            _f.write('\n'.join(lines))
+        _nz = lines.count('  store')  # faster than counting in text
+        print(f'Wrote {_ri_path}: {_nz} store instructions', file=sys.stderr)

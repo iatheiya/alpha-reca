@@ -13,9 +13,30 @@ REMOVED: PS_LK_BQ / PS_LK_VS fast-paths.  PS_BQ_BASE=0 and
 PS_VS_BASE=0 at load time → those paths always computed the wrong
 Lux ID.  General PBKT/LSYM lookup handles any remaining names.
 
+WHY THIS FILE EXISTS ALONGSIDE saku.re (both parse the same .re
+grammar — NEW/SET/ITO/LINK/etc — and this is NOT accidental
+duplication, settled after deliberate review):
+saku.re's LOAD_MAIN is the loader for the PERMANENT program — it
+runs once, currently launched by the Python bootstrap (loader.py),
+and is the target for the M1 native-binary goal: once Yaku can
+compile the whole codebase (including LOAD_MAIN itself) to a
+standalone ARM64 binary, that binary still needs a way to read
+.re source with zero Python anywhere in the loop. LOAD_MAIN is
+that path — kept permanently for this reason, not because it is
+currently load-bearing today (today, Python's interpreter.py is
+still required regardless to execute the resulting graph).
+parser.re's PS_MAIN is for HOT loading: parsing .re text from
+inside an already-running, already-compiled program (e.g. loading
+a module at runtime without restarting). Different point in the
+lifecycle — cold boot vs already-alive — so both are kept.
+Shared low-level mechanics (HT_INSERT/HT_LOOKUP, the open-addressing
+algorithm itself) ARE reused by both rather than reimplemented; see
+the LSYM-vs-BS_HTAB note near PS_LSYM_BASE below for the one place
+where they intentionally keep separate storage, and why.
+
 DEPENDS ON: aspects.re, core/constants.re, aria/ascii.re,
 aria/math.re, aria/io.re, runtime/registers.re,
-target/linux_generic.re, runtime/regs.re, aria/output.re//
+target/linux_generic.re, aria/output.re//
 ============================================================
 
 ── Data buffers ─────────────────────────────────────────────
@@ -55,14 +76,14 @@ NEW PR_LSYM          /LSYM base Lux ID
 ── Auto-Next state ──────────────────────────────────────────
 //PR_LAST_INSTR: ID of last instruction Lux created.
 0 = no previous instruction (NOLINK state).
-Set to PR_AN_LAST after each instruction-creating command.
+"Set" to PR_AN_LAST after each instruction-creating command.
 PR_AN_FIRST: first Lux of the current instruction sequence
 (receives incoming Next lumen from PR_LAST_INSTR).
 PR_AN_LAST: last Lux of the current instruction sequence
 (stored into PR_LAST_INSTR for the next command).
 All instruction-creating handlers set PR_AN_FIRST + PR_AN_LAST
 then Jump → PS_INSTR_DONE (not PS_LINE_DONE directly).
-NOLINK sets PR_LAST_INSTR = 0 and Jumps → PS_LINE_DONE directly.//
+"NOLINK" sets PR_LAST_INSTR = 0 and Jumps → PS_LINE_DONE directly.//
 NEW PR_LAST_INSTR
 NEW PR_AN_FIRST
 NEW PR_AN_LAST
@@ -84,6 +105,24 @@ NEW PS_LSYM_BASE
 NEW PS_LBUF_BASE
 NEW PS_TBUF_BASE
 
+/WHY LSYM IS A SEPARATE TABLE FROM BS_HTAB (not duplication):
+/BS_HTAB (intern.re) is the GLOBAL symbol table for the permanently-loaded
+/program — the project's own .re files, loaded once at startup by saku.re's
+/LOAD_MAIN. LSYM is the LOCAL symbol table for whatever .re text PS_MAIN is
+/currently parsing at runtime (e.g. a dynamically loaded module). They must
+/stay separate: if a hot-loaded module happened to reuse a name that already
+/exists in the permanent program (BS_HTAB), inserting into a shared table
+/would silently collide with — and could overwrite — a live program symbol.
+/LSYM gives each parse its own, disposable namespace.
+/Command-name dispatch (recognising NEW/SET/ITO/LINK/etc as keywords) still
+/correctly uses the shared BS_HTAB (see PS_LINE_KLK below) — those names
+/are part of the permanent language, not user-program symbols, so sharing
+/is correct there. Only user-defined symbol names go into LSYM.
+/The actual insert/lookup algorithm (open addressing, linear probe) is NOT
+/duplicated either — PS_INS calls the same shared HT_INSERT (htable.re)
+/that BS_INTERN does, just pointed at PS_LSYM_BASE instead of BS_HT_BASE.
+/Conclusion: this split is intentional and correct. Do not merge the two
+/tables into one.
 SETREF PS_PBKT_BASE PBKT_000
 SETREF PS_LSYM_BASE LSYM_000
 SETREF PS_LBUF_BASE PLBUF_000
@@ -141,10 +180,11 @@ SET PBKT_254 830975695311077388
 //PS_RB — read one byte from PR_READFD into PR_BYTE
 Sets PR_EOF=1 on eof.  Returns via JumpReg PR_RB_RET.//
 ============================================================/
-ITO PS_RB     Move    El1=PR_READFD  Exit=SC_A0
-ITO PS_RB_X1  Move    El1=PR_LBUF    Exit=SC_A1
-ITO PS_RB_X2  Move    El1=C_1        Exit=SC_A2
-ITO PS_RB_X8  Move    El1=SYS_READ   Exit=SC_NR
+CHAIN PS_RB
+    Move  El1=PR_READFD  Exit=SC_A0
+    Move  El1=PR_LBUF    Exit=SC_A1
+    Move  El1=C_1        Exit=SC_A2
+    Move  El1=SYS_READ   Exit=SC_NR
 ITO PS_RB_SC  Exire
 ITO PS_RB_EZ  Equal El1=SC_A0 El2=C_0 Exit=PR_EOF
 ITO PS_RB_LD  Read El1=PR_LBUF    Exit=PR_BYTE
@@ -227,21 +267,22 @@ ITO PS_NT_SKB Jump    Exit=PS_NT_SS
 //PS_D3 — parse 3 ASCII digits at tbuf[PR_D3_OFF..+2] → PR_D3_VAL
 Returns via JumpReg PR_D3_RET.//
 ============================================================
-ITO PS_D3     Add     El1=PR_TBUF  El2=PR_D3_OFF  Exit=PR_TMP
-ITO PS_D3_R0  Read El1=PR_TMP   Exit=PR_TMP2
-ITO PS_D3_S0  Sub     El1=PR_TMP2  El2=ASCII_0    Exit=PR_TMP2
-ITO PS_D3_M0  Mul     El1=PR_TMP2  El2=C_100      Exit=PR_D3_VAL
-ITO PS_D3_A1  Add     El1=PR_D3_OFF El2=C_1       Exit=PR_TMP3
-ITO PS_D3_P1  Add     El1=PR_TBUF  El2=PR_TMP3    Exit=PR_TMP
-ITO PS_D3_R1  Read El1=PR_TMP   Exit=PR_TMP2
-ITO PS_D3_S1  Sub     El1=PR_TMP2  El2=ASCII_0    Exit=PR_TMP2
-ITO PS_D3_M1  Mul     El1=PR_TMP2  El2=C_10       Exit=PR_TMP2  /×10 for decimal
-ITO PS_D3_A1V Add     El1=PR_D3_VAL El2=PR_TMP2   Exit=PR_D3_VAL
-ITO PS_D3_A2  Add     El1=PR_D3_OFF El2=C_2       Exit=PR_TMP3
-ITO PS_D3_P2  Add     El1=PR_TBUF  El2=PR_TMP3    Exit=PR_TMP
-ITO PS_D3_R2  Read El1=PR_TMP   Exit=PR_TMP2
-ITO PS_D3_S2  Sub     El1=PR_TMP2  El2=ASCII_0    Exit=PR_TMP2
-ITO PS_D3_A2V Add     El1=PR_D3_VAL El2=PR_TMP2   Exit=PR_D3_VAL
+CHAIN PS_D3
+    Add     El1=PR_TBUF  El2=PR_D3_OFF  Exit=PR_TMP
+    Read    El1=PR_TMP   Exit=PR_TMP2
+    Sub     El1=PR_TMP2  El2=ASCII_0    Exit=PR_TMP2
+    Mul     El1=PR_TMP2  El2=C_100      Exit=PR_D3_VAL
+    Add     El1=PR_D3_OFF El2=C_1       Exit=PR_TMP3
+    Add     El1=PR_TBUF  El2=PR_TMP3    Exit=PR_TMP
+    Read    El1=PR_TMP   Exit=PR_TMP2
+    Sub     El1=PR_TMP2  El2=ASCII_0    Exit=PR_TMP2
+    Mul     El1=PR_TMP2  El2=C_10       Exit=PR_TMP2
+    Add     El1=PR_D3_VAL El2=PR_TMP2   Exit=PR_D3_VAL
+    Add     El1=PR_D3_OFF El2=C_2       Exit=PR_TMP3
+    Add     El1=PR_TBUF  El2=PR_TMP3    Exit=PR_TMP
+    Read    El1=PR_TMP   Exit=PR_TMP2
+    Sub     El1=PR_TMP2  El2=ASCII_0    Exit=PR_TMP2
+    Add     El1=PR_D3_VAL El2=PR_TMP2   Exit=PR_D3_VAL
 RREDI PS_D3_RJ
 
 ============================================================
@@ -278,20 +319,22 @@ JEQ PS_LK_O PR_TMP ASCII_O PS_LK_OB1
 /fall-through: not 'O', try DS path (PR_TMP still holds first byte)
 JEQ PS_LK_DD PR_TMP ASCII_D PS_LK_DS1
 /fall-through: not 'O' or 'D', go to PBKT general lookup
-ITO PS_LK_PBKT Move     El1=PR_PBKT    Exit=RA_HT_BASE
-ITO PS_LK_PHS  Move     El1=PR_HASH    Exit=RA_HT_HASH
-ITO PS_LK_PSZ  Move     El1=C_256      Exit=RA_HT_SIZE
-ITO PS_LK_PMK  Move     El1=C_255      Exit=RA_HT_MASK
+CHAIN PS_LK_PBKT
+    Move  El1=PR_PBKT    Exit=RA_HT_BASE
+    Move  El1=PR_HASH    Exit=RA_HT_HASH
+    Move  El1=C_256      Exit=RA_HT_SIZE
+    Move  El1=C_255      Exit=RA_HT_MASK
 RVOCA PS_LK_PRJ HT_LOOKUP
 JZ PS_LK_PBKT_DONE RA_HT_RESULT PS_LK_LSYM
 /PBKT hit
 ITO PS_LK_PFND Move     El1=RA_HT_RESULT Exit=PR_SYM
 RREDI PS_LK_PFRJ
 /LSYM lookup via HT_LOOKUP
-ITO PS_LK_LSYM Move     El1=PR_LSYM    Exit=RA_HT_BASE
-ITO PS_LK_LHS  Move     El1=PR_HASH    Exit=RA_HT_HASH
-ITO PS_LK_LSZ  Move     El1=C_512      Exit=RA_HT_SIZE
-ITO PS_LK_LMK  Sub      El1=C_512      El2=C_1 Exit=RA_HT_MASK
+CHAIN PS_LK_LSYM
+    Move  El1=PR_LSYM    Exit=RA_HT_BASE
+    Move  El1=PR_HASH    Exit=RA_HT_HASH
+    Move  El1=C_512      Exit=RA_HT_SIZE
+    Sub   El1=C_512      El2=C_1 Exit=RA_HT_MASK
 RVOCA PS_LK_LRJ HT_LOOKUP
 ITO PS_LK_LSYM_DONE Move El1=RA_HT_RESULT Exit=PR_SYM
 RREDI PS_LK_LFRJ
@@ -312,20 +355,41 @@ RREDI PS_LK_DSRJ
 
 ============================================================
 //PS_INS — insert (PR_HASH, PR_EL1=lux_id) into LSYM via HT_INSERT
-Returns via JumpReg PR_INS_RET.//
+BUG FIX: this function previously had no RREDI of its own — it fell
+through (fall-through next=0) directly into whatever function happened
+to be allocated immediately after it in memory (PS_CMD_NEW, by accident
+of file order), silently skipping the real return to PS_INS's actual
+caller. The old comment ("Returns via JumpReg PR_INS_RET") described a
+register-based return mechanism that was never implemented anywhere —
+PR_INS_RET does not exist in this file. Standardized to the same
+RVOCA/RREDI convention every other function here already uses.//
 ============================================================
-ITO PS_INS     Move    El1=PR_LSYM    Exit=RA_HT_BASE
-ITO PS_INS_HS  Move    El1=PR_HASH    Exit=RA_HT_HASH
-ITO PS_INS_LI  Move    El1=PR_EL1    Exit=RA_HT_LID
-ITO PS_INS_SZ  Move    El1=C_512      Exit=RA_HT_SIZE
+CHAIN PS_INS
+    Move  El1=PR_LSYM    Exit=RA_HT_BASE
+    Move  El1=PR_HASH    Exit=RA_HT_HASH
+    Move  El1=PR_EL1     Exit=RA_HT_LID
+    Move  El1=C_512      Exit=RA_HT_SIZE
 ITO PS_INS_MK  Sub     El1=C_512      El2=C_1 Exit=RA_HT_MASK
 RVOCA PS_INS_RJ HT_INSERT
+RREDI PS_INS_DONE
 
 ============================================================
 /PS_CMD_NEW — create a new Lux, insert into LSYM
+/Idempotent: mirrors saku.re's LOAD_CMD_NEW. If the name already exists
+/(found via PS_LK), this is a no-op — PR_EL1 is set to the EXISTING Lux
+/and no new allocation happens. Before this fix, PS_CMD_NEW always
+/allocated unconditionally: a second `NEW X` in the same parse created a
+/second, orphaned Lux (PR_EL1 silently rebinding LSYM's "X" to the new
+/one, the original lost but still occupying memory) — same class of bug
+/LOAD_CMD_NEW was already written to avoid. Fixed to match.
 ============================================================
-RVOCA PS_CMD_NEW ALLOC_LUX
-ITO PS_NW_SETLID Move  El1=RA_ALLOC_RESULT Exit=PR_EL1
+RVOCA PS_CMD_NEW PS_LK
+JZ PS_NW_EXCK PR_SYM PS_NW_ALLOC
+/already exists: PR_SYM is the existing Lux — use it, allocate nothing
+ITO PS_NW_REUSE  Move El1=PR_SYM Exit=PR_EL1
+RREDI RET_NW_REUSE
+NOLINK
+ALLOC_TO PS_NW_ALLOC PR_EL1 C_2
 RVOCA CG_NW_INS  PS_INS
 RREDI RET_NW_INS_JR
 
@@ -348,10 +412,10 @@ skip spaces to find value start//
 JEQ PS_ST_SKIP PR_LPOS PR_LLEN PS_ST_INT_PATH
 ITO PS_ST_PEEKR Add      El1=PR_LBUF  El2=PR_LPOS Exit=PR_TMP
 ITO PS_ST_PEEKV Read  El1=PR_TMP   Exit=PR_TMP
-JEQ PS_ST_SPCCK PR_TMP SP PS_ST_SKIPSP
-JEQ PS_ST_TABCK PR_TMP TAB PS_ST_SKIPSP
-/not space: check for '"'
-JEQ PS_ST_DQCHK PR_TMP DQUOTE PS_ST_STR_START
+SWITCH PR_TMP
+    SP      PS_ST_SKIPSP
+    TAB     PS_ST_SKIPSP
+    DQUOTE  PS_ST_STR_START
 ITO PS_ST_INT_PATH Jump   Exit=PS_ST_INT_READ
 ITO PS_ST_SKIPSP Add     El1=PR_LPOS  El2=C_1      Exit=PR_LPOS
 ITO PS_ST_SKIPLB Jump    Exit=PS_ST_SKIP
@@ -468,7 +532,7 @@ RREDI PS_LN_RJ
 Allocates a 7-lux block via ALLOC_LUCES(ITO_SIZE) and writes slots via
 fixed offsets (no lumen scanning needed — layout is directly indexed).
 
-ITO layout:  slot0=word(self-ref)  slot1=op  slot2=e1  slot3=e2
+"ITO" layout:  slot0=word(self-ref)  slot1=op  slot2=e1  slot3=e2
 slot4=exit  slot5=next  slot6=pad  slot7+=extra_lumens
 
 Key=val slot resolution: PS_LK_SLOT compares PR_SYM (key_lux addr) against
@@ -528,7 +592,7 @@ SWITCH PR_SYM
 /Unknown key: return 0
 CLEAR PS_LKS_UNK PR_EL2
 RREDI PS_LKS_UNKR
-NOITO
+CHAIN | NOLINK
     PS_LKS_OP   Move El1=C_1        Exit=PR_EL2
         RREDI PS_LKS_OPR
     PS_LKS_A1   Move El1=SLOT_E1   Exit=PR_EL2
@@ -541,11 +605,12 @@ NOITO
 ============================================================
 /PS_CMD_LOAD — LOAD filename: open file, parse it, close
 ============================================================
-ITO PS_CMD_LOAD Move    El1=PR_READFD  Exit=PR_SAVED_READFD
-ITO PS_CL_SEOF  Move    El1=PR_EOF     Exit=PR_SAVED_EOF
-ITO PS_CL_X0    Move    El1=AT_FDCWD    Exit=SC_A0
-ITO PS_CL_X1    Move    El1=PR_TBUF    Exit=SC_A1
-ITO PS_CL_X2    Move    El1=O_RDONLY    Exit=SC_A2
+CHAIN PS_CMD_LOAD
+    Move  El1=PR_READFD  Exit=PR_SAVED_READFD
+    Move  El1=PR_EOF     Exit=PR_SAVED_EOF
+    Move  El1=AT_FDCWD   Exit=SC_A0
+    Move  El1=PR_TBUF    Exit=SC_A1
+    Move  El1=O_RDONLY   Exit=SC_A2
 CLEAR PS_CL_X3 SC_A3
 ITO PS_CL_X8    Move    El1=SYS_OPENAT Exit=SC_NR
 ITO PS_CL_SC    Exire
@@ -577,10 +642,11 @@ JZ RET_PL_RL_BLK PR_LLEN PS_LINE_DONE
 RVOCA CG_PL_NT    PS_NT
 JZ RET_PL_NT_EMP PR_TLEN PS_LINE_DONE
 /dispatch via BS_LOOKUP: PR_HASH already computed by PS_NT
-ITO PS_LINE_KLK  Move El1=BS_HT_BASE   Exit=RA_HT_BASE
-ITO PS_LINE_KHS  Move El1=PR_HASH      Exit=RA_HT_HASH
-ITO PS_LINE_KSZ  Move El1=BS_HT_SIZE   Exit=RA_HT_SIZE
-ITO PS_LINE_KMK  Move El1=BS_HT_MASK   Exit=RA_HT_MASK
+CHAIN PS_LINE_KLK
+    Move El1=BS_HT_BASE   Exit=RA_HT_BASE
+    Move El1=PR_HASH      Exit=RA_HT_HASH
+    Move El1=BS_HT_SIZE   Exit=RA_HT_SIZE
+    Move El1=BS_HT_MASK   Exit=RA_HT_MASK
 RVOCA PS_LINE_KHT HT_LOOKUP
 JZ PS_LINE_KNF RA_HT_RESULT PS_LINE_DONE
 ITO PS_LINE_KRD  Read El1=RA_HT_RESULT Exit=RA_TMP
@@ -629,12 +695,11 @@ RVOCA PS_LINE_NOP  PS_NEXT_SYMBOL
 RVOCA PS_NOP_MOF PS_MAKE_OR_FIND_ITO
 /Wire: Op=Move at slot 1, El1=C_0 at SLOT_E1, Exit=C_0 at SLOT_EXIT
 CLEAR PS_NOP_WIRE RA_TMP
-ITO PS_NOP_LOP_A  Add    El1=PR_EL1 El2=C_1 Exit=RA_TMP   /slot 1 = SLOT_OP
-ITO PS_NOP_LOP   Write El1=RA_TMP El2=Move
-ITO PS_NOP_LA1_A  Add     El1=PR_EL1 El2=SLOT_E1 Exit=RA_TMP
-ITO PS_NOP_LA1    Write El1=RA_TMP El2=C_0
-ITO PS_NOP_LTG_A  Add     El1=PR_EL1 El2=SLOT_EXIT Exit=RA_TMP
-ITO PS_NOP_LTG    Write El1=RA_TMP El2=C_0
+FOR C_1 SLOT_E1 SLOT_EXIT
+    ITO PS_NOP_A{N} Add    El1=PR_EL1 El2={X} Exit=RA_TMP
+    ITO PS_NOP_W{N} Write El1=RA_TMP El2={Y}
+        C_1 > Y=Move
+        > Y=C_0
 ITO PS_NOP_DONE Jump Exit=PS_SINGLE_ITO_DONE
 
 ── BLOCK command ─────────────────────────────────────────────
@@ -655,8 +720,7 @@ RVOCA CG_PL_BLK_CNT_NT PS_NT
 RVOCA CG_PL_BLK_CNT_PI  PS_INT
 /PR_VAL = count. Allocate first Lux.
 ITO PS_BLK_SAVECNT Move  El1=PR_VAL   Exit=PR_BLK_CNT
-RVOCA PS_BLK_ALLOC1 ALLOC_LUX
-ITO PS_BLK_SAVFST Move   El1=RA_ALLOC_RESULT Exit=PR_BLK_FIRST
+ALLOC_TO PS_BLK_ALLOC1 PR_BLK_FIRST C_2
 /insert first Lux into LSYM with saved hash
 ITO PS_BLK_SETHASH Move  El1=PR_BLK_HASH Exit=PR_HASH
 ITO PS_BLK_SETARG1 Move  El1=PR_BLK_FIRST Exit=PR_EL1
@@ -707,28 +771,27 @@ RVOCA PS_LINE_RCALL  PS_NEXT_SYMBOL
 /PR_SYM → PR_EL1 (find or alloc ITO lux)
 RVOCA PS_RCALL_MOF PS_MAKE_OR_FIND_ITO
 /write Op=Voca at slot 1 (SLOT_OP)
-ITO PS_RCALL_WIRE_OP   Add El1=PR_EL1 El2=C_1 Exit=RA_TMP
-ITO PS_RCALL_WOP     Write El1=RA_TMP El2=Voca
-/read SUB token
+/read SUB token (must happen before the FOR loop -- PR_SYM needs to be
+/fresh before any iteration runs, FOR has no mid-loop pause)
 RVOCA CG_PL_RCALL_SB  PS_NEXT_SYMBOL
-/write El1=SUB at SLOT_E1
-ITO PS_RCALL_LA1_A  Add     El1=PR_EL1 El2=SLOT_E1 Exit=RA_TMP
-ITO PS_RCALL_LA1    Write El1=RA_TMP El2=PR_SYM
-/write Exit=RA_LINK at SLOT_EXIT (Voca saves nxt there)
-ITO PS_RCALL_LXT_A  Add     El1=PR_EL1 El2=SLOT_EXIT Exit=RA_TMP
-ITO PS_RCALL_LXT    Write El1=RA_TMP El2=RA_LINK
+FOR C_1 SLOT_E1 SLOT_EXIT
+    ITO PS_RCALL_A{N}   Add El1=PR_EL1 El2={X} Exit=RA_TMP
+    ITO PS_RCALL_W{N}     Write El1=RA_TMP El2={Y}
+        C_1 > Y=Voca
+        SLOT_E1 > Y=PR_SYM
+        > Y=RA_LINK
 ITO PS_RCALL_DONE Jump Exit=PS_SINGLE_ITO_DONE
 
 ── RREDI: name → ITO name Redi ──────────────────────────────
 RVOCA PS_LINE_RRET  PS_NEXT_SYMBOL
 /PR_SYM → PR_EL1 (find or alloc ITO lux)
 RVOCA PS_RRET_MOF PS_MAKE_OR_FIND_ITO
-/write Op=Redi at slot 1 (SLOT_OP)
-ITO PS_RRET_WIRE_OP Add  El1=PR_EL1 El2=C_1 Exit=RA_TMP
-ITO PS_RRET_LOP  Write El1=RA_TMP El2=Redi
-/write El1=RA_LINK at SLOT_E1 (Redi jumps to aether[El1])
-ITO PS_RRET_LA1_A  Add   El1=PR_EL1 El2=SLOT_E1 Exit=RA_TMP
-ITO PS_RRET_LA1    Write El1=RA_TMP El2=RA_LINK
+/write Op=Redi at slot 1, El1=RA_LINK at SLOT_E1 (Redi jumps to aether[El1])
+FOR C_1 SLOT_E1
+    ITO PS_RRET_A{N} Add  El1=PR_EL1 El2={X} Exit=RA_TMP
+    ITO PS_RRET_W{N}  Write El1=RA_TMP El2={Y}
+        C_1 > Y=Redi
+        > Y=RA_LINK
 ITO PS_RRET_DONE Jump Exit=PS_SINGLE_ITO_DONE
 
 ============================================================
@@ -797,7 +860,7 @@ NEW PR_MAC_ARG1      /first element Lux ID
 NEW PR_MAC_ARG2      /second element Lux ID
 NEW PR_MAC_ARG3      /third element Lux ID
 NEW PR_MAC_TMP       /scratch for macro builders
-NEW PR_MAC_NM_K      /name_K Lux (NOP continuation for EMIT/CALL macros)
+NEW PR_MAC_NM_K      /shared scratch: third sub-lux address for LOP/WOP patterns (real Move, not NOP)
 NEW PR_MAC_NM_J      /name_J Lux
 NEW PR_MAC_NM_R      /name_R Lux
 
@@ -860,8 +923,7 @@ NOLINK
 JZ PS_MAKE_OR_FIND PR_SYM PS_MOF_NEW
 ITO PS_MOF_GOT      Move   El1=PR_SYM    Exit=PR_EL1
 RREDI PS_MOF_GOTR_r
-RVOCA PS_MOF_NEW ALLOC_LUX
-ITO PS_MOF_SETPRE   Move   El1=RA_ALLOC_RESULT Exit=PR_EL1
+ALLOC_TO PS_MOF_NEW PR_EL1 C_2
 RVOCA CG_MOF_INS      PS_INS
 RREDI PS_MOF_NEWR_r
 
@@ -891,24 +953,28 @@ Non-leaf — RA_LINK is saved/restored automatically by the call stack.//
 NOLINK
 RVOCA PS_MK_RCALL_PATTERN PS_ALLOC_SUBLUX
 ITO CAL_SAVJ Move El1=PR_EL1   Exit=PR_MAC_NM_J
-ITO CAL_LJO_A  Add     El1=PR_MAC_NM_J El2=C_1 Exit=RA_TMP2
-ITO CAL_LJO  Write El1=RA_TMP2 El2=Jump
-ITO CAL_LJD_A  Add     El1=PR_MAC_NM_J El2=SLOT_EXIT Exit=RA_TMP
-ITO CAL_LJD    Write El1=RA_TMP El2=PR_MAC_ARG1
-ITO CAL_LNO_A  Add     El1=PR_MAC_NAME El2=C_1 Exit=RA_TMP2
-ITO CAL_LNO  Write El1=RA_TMP2 El2=Move
-ITO CAL_LNA_A  Add     El1=PR_MAC_NAME El2=SLOT_E1 Exit=RA_TMP
-ITO CAL_LNA    Write El1=RA_TMP El2=PR_CAL_LANDING
-ITO CAL_LNT_A  Add     El1=PR_MAC_NAME El2=SLOT_EXIT Exit=RA_TMP
-ITO CAL_LNT    Write El1=RA_TMP El2=RA_LINK
+FOR C_1 SLOT_EXIT
+    ITO CAL_J{N}_A  Add     El1=PR_MAC_NM_J El2={X} Exit=RA_TMP2
+    ITO CAL_J{N}    Write El1=RA_TMP2 El2={Y}
+        C_1 > Y=Jump
+        > Y=PR_MAC_ARG1
+FOR C_1 SLOT_E1 SLOT_EXIT
+    ITO CAL_N{N}_A  Add     El1=PR_MAC_NAME El2={X} Exit=RA_TMP2
+    ITO CAL_N{N}    Write El1=RA_TMP2 El2={Y}
+        C_1 > Y=Move
+        SLOT_E1 > Y=PR_CAL_LANDING
+        > Y=RA_LINK
 RREDI CAL_RET_r
 
 ── EMIT / EMITI / PUTBYTE — unified via PS_MK_EMIT_PATTERN ──
-//All three create the same 4-Lux structure:
+//All three create the same 2-Lux structure:
 name: Move arg → target_reg
-name_R: Move name_K → RA_LINK
-name_J: Jump → dest_sub
-name_K: Move C_0 → C_0  (NOP continuation)
+name_J: Voca dest_sub Exit=RA_LINK
+Optimized: no name_K NOP. Voca saves nxt (name_J's own slot 5) into RA_LINK;
+when dest_sub returns via Redi(RA_LINK), execution resumes exactly at
+name_J's slot 5 — the same place PS_INSTR_DONE would autolink the next
+instruction into. So PR_AN_LAST = name_J works correctly without an extra
+"NOP" lux.
 IN (set before RVOCA PS_MK_EMIT_PATTERN):
 PR_EMP_DEST = destination subroutine Lux ID
 PR_EMP_TGT  = target register Lux ID
@@ -919,65 +985,59 @@ NOLINK
 /EMIT: name + arg
 RVOCA CG_PL_EMIT_NM PS_READ_NAME_MOF
 RVOCA CG_PL_EMIT_A  PS_NEXT_SYMBOL
-ITO PS_EMIT_SAVA  Move  El1=PR_SYM    Exit=PR_MAC_ARG1
-ITO PS_EMIT_SDST  Move  El1=EMIT_STR_ENTRY Exit=PR_EMP_DEST
-ITO PS_EMIT_STGT  Move  El1=RA_TW_LUX     Exit=PR_EMP_TGT
+CHAIN PS_EMIT_SAVA
+    Move  El1=PR_SYM          Exit=PR_MAC_ARG1
+    Move  El1=EMIT_STR_ENTRY  Exit=PR_EMP_DEST
+    Move  El1=RA_TW_LUX       Exit=PR_EMP_TGT
 RVOCA PS_EMIT_PAT   PS_MK_EMIT_PATTERN
 ITO PS_EMIT_DONE3 Jump  Exit=PS_INSTR_DONE
 
 /EMITI: name + value_reg
 RVOCA PS_LINE_EMITI PS_READ_NAME_MOF
 RVOCA CG_PL_EMITI_A  PS_NEXT_SYMBOL
-ITO PS_EMITI_SAVA  Move El1=PR_SYM    Exit=PR_MAC_ARG1
-ITO PS_EMITI_SDST  Move El1=EMIT_INT_ENTRY Exit=PR_EMP_DEST
-ITO PS_EMITI_STGT  Move El1=RA_TMP2       Exit=PR_EMP_TGT
+CHAIN PS_EMITI_SAVA
+    Move El1=PR_SYM          Exit=PR_MAC_ARG1
+    Move El1=EMIT_INT_ENTRY  Exit=PR_EMP_DEST
+    Move El1=RA_TMP2         Exit=PR_EMP_TGT
 RVOCA PS_EMITI_PAT   PS_MK_EMIT_PATTERN
 ITO PS_EMITI_DONE3 Jump Exit=PS_INSTR_DONE
 
 /PUTBYTE: name + byte_val
 RVOCA PS_LINE_PUTB PS_READ_NAME_MOF
 RVOCA CG_PL_PUTB_A  PS_NEXT_SYMBOL
-ITO PS_PUTB_SAVA  Move  El1=PR_SYM     Exit=PR_MAC_ARG1
-ITO PS_PUTB_SDST  Move  El1=PUT_BYTE       Exit=PR_EMP_DEST
-ITO PS_PUTB_STGT  Move  El1=RA_BYTE        Exit=PR_EMP_TGT
+CHAIN PS_PUTB_SAVA
+    Move  El1=PR_SYM    Exit=PR_MAC_ARG1
+    Move  El1=PUT_BYTE  Exit=PR_EMP_DEST
+    Move  El1=RA_BYTE   Exit=PR_EMP_TGT
 RVOCA PS_PUTB_PAT   PS_MK_EMIT_PATTERN
 ITO PS_PUTB_DONE3 Jump  Exit=PS_INSTR_DONE
 
-── PS_MK_EMIT_PATTERN — build 3-Lux emit sequence ────────────
+── PS_MK_EMIT_PATTERN — build 2-Lux emit sequence ────────────
 //IN:  PR_MAC_NAME = name Lux, PR_MAC_ARG1 = arg Lux
 PR_EMP_DEST = Voca target, PR_EMP_TGT = Move target reg
-OUT: PR_AN_FIRST = PR_MAC_NAME, PR_AN_LAST = PR_MAC_NM_K
-Structure: name(Move arg→reg) → name_J(Voca dest Exit=RA_LINK) → name_K(NOP)
+OUT: PR_AN_FIRST = PR_MAC_NAME, PR_AN_LAST = PR_MAC_NM_J
+Structure: name(Move arg→reg) → name_J(Voca dest Exit=RA_LINK)
 Non-leaf — RA_LINK is saved/restored automatically by the call stack.//
 NOLINK
-/name_K: Move C_0 → C_0  (NOP landing — Voca saves nxt=name_K into RA_LINK)
-RVOCA PS_MK_EMIT_PATTERN PS_ALLOC_SUBLUX
-ITO EMP_SAVK Move El1=PR_EL1 Exit=PR_MAC_NM_K
-ITO EMP_LKO_A  Add     El1=PR_MAC_NM_K El2=C_1 Exit=RA_TMP2
-ITO EMP_LKO  Write El1=RA_TMP2 El2=Move
-ITO EMP_LKA_A  Add     El1=PR_MAC_NM_K El2=SLOT_E1 Exit=RA_TMP
-ITO EMP_LKA    Write El1=RA_TMP El2=C_0
-ITO EMP_LKT_A  Add     El1=PR_MAC_NM_K El2=SLOT_EXIT Exit=RA_TMP
-ITO EMP_LKT    Write El1=RA_TMP El2=C_0
 /name_J: Voca El1=dest Exit=RA_LINK (saves nxt into RA_LINK, jumps to dest)
-RVOCA EMP_MKJ PS_ALLOC_SUBLUX
+RVOCA PS_MK_EMIT_PATTERN PS_ALLOC_SUBLUX
 ITO EMP_SAVJ Move El1=PR_EL1 Exit=PR_MAC_NM_J
-ITO EMP_LJO_A  Add     El1=PR_MAC_NM_J El2=C_1 Exit=RA_TMP2
-ITO EMP_LJO  Write El1=RA_TMP2 El2=Voca
-ITO EMP_LJA_A  Add     El1=PR_MAC_NM_J El2=SLOT_E1 Exit=RA_TMP
-ITO EMP_LJA    Write El1=RA_TMP El2=PR_EMP_DEST
-ITO EMP_LJX_A  Add     El1=PR_MAC_NM_J El2=SLOT_EXIT Exit=RA_TMP
-ITO EMP_LJX    Write El1=RA_TMP El2=RA_LINK
+FOR C_1 SLOT_E1 SLOT_EXIT
+    ITO EMP_J{N}_A  Add     El1=PR_MAC_NM_J El2={X} Exit=RA_TMP2
+    ITO EMP_J{N}    Write El1=RA_TMP2 El2={Y}
+        C_1 > Y=Voca
+        SLOT_E1 > Y=PR_EMP_DEST
+        > Y=RA_LINK
 /name: Move arg → PR_EMP_TGT
-ITO EMP_LNO_A  Add     El1=PR_MAC_NAME El2=C_1 Exit=RA_TMP2
-ITO EMP_LNO  Write El1=RA_TMP2 El2=Move
-ITO EMP_LNA_A  Add     El1=PR_MAC_NAME El2=SLOT_E1 Exit=RA_TMP
-ITO EMP_LNA    Write El1=RA_TMP El2=PR_MAC_ARG1
-ITO EMP_LNT_A  Add     El1=PR_MAC_NAME El2=SLOT_EXIT Exit=RA_TMP
-ITO EMP_LNT    Write El1=RA_TMP El2=PR_EMP_TGT
-/chain: name→name_J→name_K
+FOR C_1 SLOT_E1 SLOT_EXIT
+    ITO EMP_N{N}_A  Add     El1=PR_MAC_NAME El2={X} Exit=RA_TMP2
+    ITO EMP_N{N}    Write El1=RA_TMP2 El2={Y}
+        C_1 > Y=Move
+        SLOT_E1 > Y=PR_MAC_ARG1
+        > Y=PR_EMP_TGT
+/chain: name→name_J
 ITO EMP_FIRST Move El1=PR_MAC_NAME Exit=PR_AN_FIRST
-ITO EMP_LAST  Move El1=PR_MAC_NM_K Exit=PR_AN_LAST
+ITO EMP_LAST  Move El1=PR_MAC_NM_J Exit=PR_AN_LAST
 RREDI EMP_RET_r
 
 ── JEQ macro: JEQ name A B dest ─────────────────────────────
@@ -1016,21 +1076,20 @@ NOLINK
 /name_J: JumpIf RA_FLAG → dest
 RVOCA PS_MK_JCQ_PATTERN PS_ALLOC_SUBLUX
 ITO JCQ_SAVJ Move El1=PR_EL1 Exit=PR_MAC_NM_J
-ITO JCQ_LJO_A  Add     El1=PR_MAC_NM_J El2=C_1 Exit=RA_TMP2
-ITO JCQ_LJO  Write El1=RA_TMP2 El2=JumpIf
-ITO JCQ_LJA_A  Add     El1=PR_MAC_NM_J El2=SLOT_E1 Exit=RA_TMP
-ITO JCQ_LJA    Write El1=RA_TMP El2=RA_FLAG
-ITO JCQ_LJD_A  Add     El1=PR_MAC_NM_J El2=SLOT_EXIT Exit=RA_TMP
-ITO JCQ_LJD    Write El1=RA_TMP El2=PR_MAC_ARG3
+FOR C_1 SLOT_E1 SLOT_EXIT
+    ITO JCQ_J{N}_A  Add     El1=PR_MAC_NM_J El2={X} Exit=RA_TMP2
+    ITO JCQ_J{N}    Write El1=RA_TMP2 El2={Y}
+        C_1 > Y=JumpIf
+        SLOT_E1 > Y=RA_FLAG
+        > Y=PR_MAC_ARG3
 /name: Equal A B → RA_FLAG
-ITO JCQ_LNO_A  Add     El1=PR_MAC_NAME El2=C_1 Exit=RA_TMP2
-ITO JCQ_LNO  Write El1=RA_TMP2 El2=Equal
-ITO JCQ_LNA_A  Add     El1=PR_MAC_NAME El2=SLOT_E1 Exit=RA_TMP
-ITO JCQ_LNA    Write El1=RA_TMP El2=PR_MAC_ARG1
-ITO JCQ_LNB_A  Add     El1=PR_MAC_NAME El2=SLOT_E2 Exit=RA_TMP
-ITO JCQ_LNB    Write El1=RA_TMP El2=PR_JCQ_B2
-ITO JCQ_LNT_A  Add     El1=PR_MAC_NAME El2=SLOT_EXIT Exit=RA_TMP
-ITO JCQ_LNT    Write El1=RA_TMP El2=RA_FLAG
+FOR C_1 SLOT_E1 SLOT_E2 SLOT_EXIT
+    ITO JCQ_N{N}_A  Add     El1=PR_MAC_NAME El2={X} Exit=RA_TMP2
+    ITO JCQ_N{N}    Write El1=RA_TMP2 El2={Y}
+        C_1 > Y=Equal
+        SLOT_E1 > Y=PR_MAC_ARG1
+        SLOT_E2 > Y=PR_JCQ_B2
+        > Y=RA_FLAG
 ITO JCQ_FIRST Move El1=PR_MAC_NAME Exit=PR_AN_FIRST
 ITO JCQ_LAST  Move El1=PR_MAC_NM_J Exit=PR_AN_LAST
 RREDI JCQ_RET_r
@@ -1082,30 +1141,30 @@ ITO LOP_LNT    Write El1=RA_TMP El2=RA_LM_SRC
 /name_R: Move rel → RA_LM_REL
 RVOCA LOP_MKR PS_ALLOC_SUBLUX
 ITO LOP_SAVR Move El1=PR_EL1 Exit=PR_MAC_NM_R
-ITO LOP_LRO_A  Add     El1=PR_MAC_NM_R El2=C_1 Exit=RA_TMP2
-ITO LOP_LRO  Write El1=RA_TMP2 El2=Move
-ITO LOP_LRA_A  Add     El1=PR_MAC_NM_R El2=SLOT_E1 Exit=RA_TMP
-ITO LOP_LRA    Write El1=RA_TMP El2=PR_MAC_ARG2
-ITO LOP_LRT_A  Add     El1=PR_MAC_NM_R El2=SLOT_EXIT Exit=RA_TMP
-ITO LOP_LRT    Write El1=RA_TMP El2=RA_LM_REL
+FOR C_1 SLOT_E1 SLOT_EXIT
+    ITO LOP_R{N}_A  Add     El1=PR_MAC_NM_R El2={X} Exit=RA_TMP2
+    ITO LOP_R{N}    Write El1=RA_TMP2 El2={Y}
+        C_1 > Y=Move
+        SLOT_E1 > Y=PR_MAC_ARG2
+        > Y=RA_LM_REL
 /name_T: Move exit_lux → RA_LM_EXIT (stored in NM_K slot)
 RVOCA LOP_MKT PS_ALLOC_SUBLUX
 ITO LOP_SAVT Move El1=PR_EL1 Exit=PR_MAC_NM_K
-ITO LOP_LTO_A  Add     El1=PR_MAC_NM_K El2=C_1 Exit=RA_TMP2
-ITO LOP_LTO  Write El1=RA_TMP2 El2=Move
-ITO LOP_LTA_A  Add     El1=PR_MAC_NM_K El2=SLOT_E1 Exit=RA_TMP
-ITO LOP_LTA    Write El1=RA_TMP El2=PR_MAC_ARG3
-ITO LOP_LTT_A  Add     El1=PR_MAC_NM_K El2=SLOT_EXIT Exit=RA_TMP
-ITO LOP_LTT    Write El1=RA_TMP El2=RA_LM_EXIT
+FOR C_1 SLOT_E1 SLOT_EXIT
+    ITO LOP_T{N}_A  Add     El1=PR_MAC_NM_K El2={X} Exit=RA_TMP2
+    ITO LOP_T{N}    Write El1=RA_TMP2 El2={Y}
+        C_1 > Y=Move
+        SLOT_E1 > Y=PR_MAC_ARG3
+        > Y=RA_LM_EXIT
 /name_J: Voca → PR_LOP_LUMENOP (ADD_LUMEN or REMOVE_LUMEN)
 RVOCA LOP_MKJ PS_ALLOC_SUBLUX
 ITO LOP_SAVJ Move El1=PR_EL1 Exit=PR_MAC_NM_J
-ITO LOP_LJO_A  Add     El1=PR_MAC_NM_J El2=C_1 Exit=RA_TMP2
-ITO LOP_LJO  Write El1=RA_TMP2 El2=Voca
-ITO LOP_LJA_A  Add     El1=PR_MAC_NM_J El2=SLOT_E1 Exit=RA_TMP
-ITO LOP_LJA    Write El1=RA_TMP El2=PR_LOP_LUMENOP
-ITO LOP_LJX_A  Add     El1=PR_MAC_NM_J El2=SLOT_EXIT Exit=RA_TMP
-ITO LOP_LJX    Write El1=RA_TMP El2=RA_LINK
+FOR C_1 SLOT_E1 SLOT_EXIT
+    ITO LOP_J{N}_A  Add     El1=PR_MAC_NM_J El2={X} Exit=RA_TMP2
+    ITO LOP_J{N}    Write El1=RA_TMP2 El2={Y}
+        C_1 > Y=Voca
+        SLOT_E1 > Y=PR_LOP_LUMENOP
+        > Y=RA_LINK
 /chain
 ITO LOP_FIRST Move El1=PR_MAC_NAME Exit=PR_AN_FIRST
 ITO LOP_LAST  Move El1=PR_MAC_NM_J Exit=PR_AN_LAST
@@ -1121,9 +1180,10 @@ RVOCA PS_LINE_LH PS_READ_NAME_MOF
 RVOCA CG_PL_LH_SRC  PS_NEXT_SYMBOL
 ITO PS_LH_SAVS  Move El1=PR_SYM    Exit=PR_MAC_ARG1
 RVOCA CG_PL_LH_TGT  PS_NEXT_SYMBOL
-ITO PS_LH_SAVT  Move El1=PR_SYM    Exit=PR_MAC_ARG2
-ITO PS_LH_SFUNC Move El1=SR_GLL    Exit=PR_GL_SRFUNC
-ITO PS_LH_STGT  Move El1=RA_SR_LUX Exit=PR_GL_NAMETGT
+CHAIN PS_LH_SAVT
+    Move El1=PR_SYM    Exit=PR_MAC_ARG2
+    Move El1=SR_GLL    Exit=PR_GL_SRFUNC
+    Move El1=RA_SR_LUX Exit=PR_GL_NAMETGT
 RVOCA PS_LH_PAT   PS_MK_GL_PATTERN
 ITO PS_LH_DONE3 Jump Exit=PS_INSTR_DONE
 
@@ -1131,9 +1191,10 @@ RVOCA PS_LINE_LR PS_READ_NAME_MOF
 RVOCA CG_PL_LR_SRC  PS_NEXT_SYMBOL
 ITO PS_LR_SAVS  Move El1=PR_SYM      Exit=PR_MAC_ARG1
 RVOCA CG_PL_LR_TGT  PS_NEXT_SYMBOL
-ITO PS_LR_SAVT  Move El1=PR_SYM      Exit=PR_MAC_ARG2
-ITO PS_LR_SFUNC Move El1=SR_GLR      Exit=PR_GL_SRFUNC
-ITO PS_LR_STGT  Move El1=RA_SR_LUMEN Exit=PR_GL_NAMETGT
+CHAIN PS_LR_SAVT
+    Move El1=PR_SYM      Exit=PR_MAC_ARG2
+    Move El1=SR_GLR      Exit=PR_GL_SRFUNC
+    Move El1=RA_SR_LUMEN Exit=PR_GL_NAMETGT
 RVOCA PS_LR_PAT   PS_MK_GL_PATTERN
 ITO PS_LR_DONE3 Jump Exit=PS_INSTR_DONE
 
@@ -1141,9 +1202,10 @@ RVOCA PS_LINE_LT PS_READ_NAME_MOF
 RVOCA CG_PL_LT_SRC  PS_NEXT_SYMBOL
 ITO PS_LT_SAVS  Move El1=PR_SYM      Exit=PR_MAC_ARG1
 RVOCA CG_PL_LT_TGT  PS_NEXT_SYMBOL
-ITO PS_LT_SAVT  Move El1=PR_SYM      Exit=PR_MAC_ARG2
-ITO PS_LT_SFUNC Move El1=SR_GLE      Exit=PR_GL_SRFUNC
-ITO PS_LT_STGT  Move El1=RA_SR_LUMEN Exit=PR_GL_NAMETGT
+CHAIN PS_LT_SAVT
+    Move El1=PR_SYM      Exit=PR_MAC_ARG2
+    Move El1=SR_GLE      Exit=PR_GL_SRFUNC
+    Move El1=RA_SR_LUMEN Exit=PR_GL_NAMETGT
 RVOCA PS_LT_PAT   PS_MK_GL_PATTERN
 ITO PS_LT_DONE3 Jump Exit=PS_INSTR_DONE
 
@@ -1151,9 +1213,10 @@ RVOCA PS_LINE_LX PS_READ_NAME_MOF
 RVOCA CG_PL_LX_SRC  PS_NEXT_SYMBOL
 ITO PS_LX_SAVS  Move El1=PR_SYM      Exit=PR_MAC_ARG1
 RVOCA CG_PL_LX_TGT  PS_NEXT_SYMBOL
-ITO PS_LX_SAVT  Move El1=PR_SYM      Exit=PR_MAC_ARG2
-ITO PS_LX_SFUNC Move El1=SR_GLX      Exit=PR_GL_SRFUNC
-ITO PS_LX_STGT  Move El1=RA_SR_LUMEN Exit=PR_GL_NAMETGT
+CHAIN PS_LX_SAVT
+    Move El1=PR_SYM      Exit=PR_MAC_ARG2
+    Move El1=SR_GLX      Exit=PR_GL_SRFUNC
+    Move El1=RA_SR_LUMEN Exit=PR_GL_NAMETGT
 RVOCA PS_LX_PAT   PS_MK_GL_PATTERN
 ITO PS_LX_DONE3 Jump Exit=PS_INSTR_DONE
 
@@ -1166,29 +1229,28 @@ NOLINK
 /name_W: Move RA_SR_OUT → exit_lux
 RVOCA PS_MK_GL_PATTERN PS_ALLOC_SUBLUX
 ITO GL_SAVW Move El1=PR_EL1 Exit=PR_MAC_NM_R
-ITO GL_LWO_A  Add     El1=PR_MAC_NM_R El2=C_1 Exit=RA_TMP2
-ITO GL_LWO  Write El1=RA_TMP2 El2=Move
-ITO GL_LWA_A  Add     El1=PR_MAC_NM_R El2=SLOT_E1 Exit=RA_TMP
-ITO GL_LWA    Write El1=RA_TMP El2=RA_SR_OUT
-ITO GL_LWT_A  Add     El1=PR_MAC_NM_R El2=SLOT_EXIT Exit=RA_TMP
-ITO GL_LWT    Write El1=RA_TMP El2=PR_MAC_ARG2
+FOR C_1 SLOT_E1 SLOT_EXIT
+    ITO GL_W{N}_A  Add     El1=PR_MAC_NM_R El2={X} Exit=RA_TMP2
+    ITO GL_W{N}    Write El1=RA_TMP2 El2={Y}
+        C_1 > Y=Move
+        SLOT_E1 > Y=RA_SR_OUT
+        > Y=PR_MAC_ARG2
 /name_J: Voca El1=SR_GL* Exit=RA_LINK
 RVOCA GL_MKJ PS_ALLOC_SUBLUX
 ITO GL_SAVJ Move El1=PR_EL1 Exit=PR_MAC_NM_J
-ITO GL_LJO_A  Add     El1=PR_MAC_NM_J El2=C_1 Exit=RA_TMP2
-ITO GL_LJO  Write El1=RA_TMP2 El2=Voca
-ITO GL_LJA_A  Add     El1=PR_MAC_NM_J El2=SLOT_E1 Exit=RA_TMP
-ITO GL_LJA    Write El1=RA_TMP El2=PR_GL_SRFUNC
-/Exit=RA_LINK
-ITO GL_LJX_A  Add     El1=PR_MAC_NM_J El2=SLOT_EXIT Exit=RA_TMP
-ITO GL_LJX    Write El1=RA_TMP El2=RA_LINK
+FOR C_1 SLOT_E1 SLOT_EXIT
+    ITO GL_J{N}_A  Add     El1=PR_MAC_NM_J El2={X} Exit=RA_TMP2
+    ITO GL_J{N}    Write El1=RA_TMP2 El2={Y}
+        C_1 > Y=Voca
+        SLOT_E1 > Y=PR_GL_SRFUNC
+        > Y=RA_LINK
 /name: Move src → input_reg
-ITO GL_LNO_A  Add     El1=PR_MAC_NAME El2=C_1 Exit=RA_TMP2
-ITO GL_LNO  Write El1=RA_TMP2 El2=Move
-ITO GL_LNA_A  Add     El1=PR_MAC_NAME El2=SLOT_E1 Exit=RA_TMP
-ITO GL_LNA    Write El1=RA_TMP El2=PR_MAC_ARG1
-ITO GL_LNT_A  Add     El1=PR_MAC_NAME El2=SLOT_EXIT Exit=RA_TMP
-ITO GL_LNT    Write El1=RA_TMP El2=PR_GL_NAMETGT
+FOR C_1 SLOT_E1 SLOT_EXIT
+    ITO GL_N{N}_A  Add     El1=PR_MAC_NAME El2={X} Exit=RA_TMP2
+    ITO GL_N{N}    Write El1=RA_TMP2 El2={Y}
+        C_1 > Y=Move
+        SLOT_E1 > Y=PR_MAC_ARG1
+        > Y=PR_GL_NAMETGT
 ITO GL_FIRST Move El1=PR_MAC_NAME Exit=PR_AN_FIRST
 ITO GL_LAST  Move El1=PR_MAC_NM_R Exit=PR_AN_LAST
 RREDI GL_RET_r
@@ -1202,57 +1264,58 @@ RVOCA CG_PL_RCAT_LD  PS_NEXT_SYMBOL
 ITO PS_RCAT_SAVLD  Move  El1=PR_SYM     Exit=PR_MAC_ARG2
 ITO PS_RCAT_SLND   Move  El1=PR_MAC_ARG2 Exit=PR_CAL_LANDING
 RVOCA PS_RCAT_PAT    PS_MK_RCALL_PATTERN
-ITO PS_RCAT_DONE   Move  El1=PR_MAC_NAME Exit=PR_AN_FIRST
-ITO PS_RCAT_DONE2  Move  El1=PR_MAC_NM_J Exit=PR_AN_LAST
-ITO PS_RCAT_DONE3  Jump  Exit=PS_INSTR_DONE
+CHAIN PS_RCAT_DONE
+    Move  El1=PR_MAC_NAME Exit=PR_AN_FIRST
+    Move  El1=PR_MAC_NM_J Exit=PR_AN_LAST
+    Jump  Exit=PS_INSTR_DONE
 
-── YAKU_NEXO / YAKU_NEXO_TERM / YAKU_NEXO_ALIAS ─────────────
-//YAKU_NEXO aspect body    → NEW Yaku_aspect; ForType lumen; build RO graph from body (no quotes)
-YAKU_NEXO_TERM aspect body  → YAKU_NEXO + Terminates lumen
-YAKU_NEXO_ALIAS aspect alias body → YAKU_NEXO_TERM + second ForType lumen
-Strategy: tbuf[9] distinguishes variants ('_'=has suffix, 0=plain YAKU_NEXO)
-tbuf[9]=0 → YAKU_NEXO (9 chars: S-A-K-U-_-N-E-X-O)
-tbuf[9]='_' + tbuf[10]='T' → YAKU_NEXO_TERM
-tbuf[9]='_' + tbuf[10]='A' → YAKU_NEXO_ALIAS//
-NEW PR_DEF_SUBTYPE   /0=YAKU_NEXO, 1=YAKU_NEXO_TERM, 2=YAKU_NEXO_ALIAS (YAKU_NEXO_CMP/ARITH not yet in parser.re)
+── NEXO — unified rule builder ───────────────────────────────
+//NEXO name [relation] [alias]   body
+/  name     — aspect Lux (intern key → Yaku_name Lux)
+/  relation — optional next token: if present, LINK Yaku_name --relation--> Yaku
+/  alias    — optional third token: if present, LINK Yaku_name --ForType--> alias
+/All three tokens are read from the same line before the body.
+/Replaces: YAKU_NEXO, YAKU_NEXO_TERM, YAKU_NEXO_CMP, YAKU_NEXO_ARITH, YAKU_NEXO_ALIAS//
 NEW PR_YAKU_RULE_LUX  /the Yaku_aspect Lux ID
 NEW PR_DEF_HASH_SAVE /saved hash for Yaku_aspect insertion
+NEW PR_NEXO_REL      /interned relation Lux (0 if absent)
+NEW PR_NEXO_ALIAS    /interned alias Lux (0 if absent)
 
-/PS_LINE_SAKU: entry from S-dispatch (tbuf[1]=='A' → YAKU)
 NOLINK
-── YAKU_NEXO commands (direct dispatch via hash) ────────────
+── NEXO command handler ─────────────────────────────────────
 NOLINK
-CLEAR PS_LINE_SAKU PR_DEF_SUBTYPE
-ITO PS_SAKU_JMP Jump Exit=PS_DEF_COMMON
-NOLINK
-ITO PS_LINE_SAKU_TERM  Move El1=C_1 Exit=PR_DEF_SUBTYPE
-ITO PS_SAKU_TERM2      Jump Exit=PS_DEF_COMMON
-NOLINK
-ITO PS_LINE_SAKU_ALIAS Move El1=C_2 Exit=PR_DEF_SUBTYPE
-ITO PS_SAKU_ALIAS2     Jump Exit=PS_DEF_COMMON
+/PS_LINE_SAKU: entry for NEXO dispatch
+RVOCA PS_LINE_SAKU PS_NEXT_SYMBOL
+/PR_SYM = name Lux; save it
+ITO PS_DEF_SAVNM Move     El1=PR_SYM   Exit=PR_MAC_ARG1
+/Clear optional args
+CHAIN PS_DEF_CLR
+    Move El1=C_0  Exit=PR_NEXO_REL
+    Move El1=C_0  Exit=PR_NEXO_ALIAS
+/Read next token — may be relation or end-of-line
+RVOCA PS_DEF_RD_REL PS_NT
+JZ PS_DEF_RELCK PR_TLEN PS_DEF_STR
+/Relation present — intern and save
+RVOCA PS_DEF_INT_REL BS_INTERN
+ITO PS_DEF_SAVREL Move    El1=RA_BS_RESULT  Exit=PR_NEXO_REL
+/Read next token — may be alias or end-of-line
+RVOCA PS_DEF_RD_ALIAS PS_NT
+JZ PS_DEF_ALIASCK PR_TLEN PS_DEF_STR
+/Alias present — intern and save
+RVOCA PS_DEF_INT_ALIAS BS_INTERN
+ITO PS_DEF_SAVAL Move     El1=RA_BS_RESULT  Exit=PR_NEXO_ALIAS
 
-/PS_DEF_COMMON: read aspect name token
-RVOCA PS_DEF_COMMON PS_NEXT_SYMBOL
-/PR_SYM = aspect Lux ID; save it
-ITO PS_DEF_SAVNM Move     El1=PR_SYM     Exit=PR_MAC_ARG1
-/For YAKU_NEXO_ALIAS: read alias name
-JEQ PS_DEF_ALIASCK PR_DEF_SUBTYPE C_2 PS_DEF_READ_ALIAS
-ITO PS_DEF_NOALIAS Jump   Exit=PS_DEF_STR
-/read alias
-RVOCA PS_DEF_READ_ALIAS PS_NEXT_SYMBOL
-ITO PS_DEF_SAVAL Move     El1=PR_SYM     Exit=PR_MAC_ARG2
 /PS_DEF_STR: create Yaku_aspect Lux
-RVOCA PS_DEF_STR ALLOC_LUX
-ITO PS_DEF_SAVRULE Move   El1=RA_ALLOC_RESULT Exit=PR_YAKU_RULE_LUX
-/link Yaku_aspect --ForType--> aspect
+ALLOC_TO PS_DEF_STR PR_YAKU_RULE_LUX C_2
+/link Yaku_aspect --ForType--> aspect (always)
 LINK_OP PS_DEF_LNKFT PR_YAKU_RULE_LUX ForType PR_MAC_ARG1
-/if YAKU_NEXO_ALIAS: also LINK --ForType--> alias
-JEQ PS_DEF_ALCK2 PR_DEF_SUBTYPE C_2 PS_DEF_LNKAL
-ITO PS_DEF_NOAL2 Jump     Exit=PS_DEF_TERMCK
-LINK_OP PS_DEF_LNKAL PR_YAKU_RULE_LUX ForType PR_MAC_ARG2
-/if YAKU_NEXO_TERM or ALIAS: LINK --Terminates--> Yaku
-JZ PS_DEF_TERMCK PR_DEF_SUBTYPE PS_DEF_READSTR
-LINK_OP PS_DEF_LNKTERM PR_YAKU_RULE_LUX Terminates Yaku
+/if relation given: LINK Yaku_aspect --relation--> Yaku
+JZ PS_DEF_TERMCK PR_NEXO_REL PS_DEF_ALCK2
+LINK_OP PS_DEF_LNKTERM PR_YAKU_RULE_LUX PR_NEXO_REL Yaku
+/if alias given: LINK Yaku_aspect --ForType--> alias
+NOLINK
+JZ PS_DEF_ALCK2 PR_NEXO_ALIAS PS_DEF_READSTR
+LINK_OP PS_DEF_LNKAL PR_YAKU_RULE_LUX ForType PR_NEXO_ALIAS
 ── Graph-builder registers (used by PS_DEF_BUILD_GRAPH) ──────
 NEW PR_GB_FIRST      /first RO_Lux of rule graph (= Rule.word via SETREF)
 NEW PR_GB_PREV       /previously created RO_Lux (for Next-chaining)
@@ -1478,12 +1541,10 @@ JEQ PGB_LOOP PR_LPOS PR_LLEN PGB_FLUSH_FINAL
 ITO PGB_BREAD    Add    El1=PR_LBUF El2=PR_LPOS     Exit=RA_TMP
 ITO PGB_BLOAD    Read   El1=RA_TMP                  Exit=PR_ST_BYTE
 ITO PGB_BINCL    Add    El1=PR_LPOS El2=C_1         Exit=PR_LPOS
-/Closing '"' → done
-JEQ PGB_DQEND PR_ST_BYTE DQUOTE PGB_FLUSH_FINAL
-/~ → LF escape (0x0A)
-JEQ PGB_TILDECK PR_ST_BYTE TILDE PGB_EMIT_LF
-/'{' → placeholder
-JEQ PGB_BRACECK PR_ST_BYTE LBRACE PGB_EMIT_PH
+SWITCH PR_ST_BYTE
+    DQUOTE  PGB_FLUSH_FINAL
+    TILDE   PGB_EMIT_LF
+    LBRACE  PGB_EMIT_PH
 /Ordinary byte → emit
 ITO PGB_LITLIT   Move   El1=PR_ST_BYTE Exit=RA_TMP
 RVOCA PGB_LITEB  PGB_EMIT_BYTE
@@ -1507,10 +1568,6 @@ RREDI PGB_DONE_r
 ── WALK_ONE macro: WALK_ONE name lux_val rel_val ─────────────
 //name_LUX: Move lux_val → RA_SR_LUX
 name_REL: Move rel_val → RA_SR_REL
-RVOCA name SR_WALK_ONE
-── WALK_ONE macro: WALK_ONE name lux_val rel_val ─────────────
-name_LUX: Move lux_val → RA_SR_LUX
-name_REL: Move rel_val → RA_SR_REL
 name: Voca El1=SR_WALK_ONE
 Unified via PS_MK_WO_PATTERN.//
 RVOCA PS_LINE_WALK PS_READ_NAME_MOF
@@ -1519,9 +1576,10 @@ ITO PS_WO_SAVLX  Move El1=PR_SYM Exit=PR_MAC_ARG1
 RVOCA CG_PL_WO_RL  PS_NEXT_SYMBOL
 ITO PS_WO_SAVRL  Move El1=PR_SYM Exit=PR_MAC_ARG2
 RVOCA PS_WO_PAT    PS_MK_WO_PATTERN
-ITO PS_WO_DONE   Move El1=PR_MAC_NM_R  Exit=PR_AN_FIRST
-ITO PS_WO_DONE2  Move El1=PR_MAC_NAME  Exit=PR_AN_LAST
-ITO PS_WO_DONE3  Jump Exit=PS_INSTR_DONE
+CHAIN PS_WO_DONE
+    Move El1=PR_MAC_NM_R  Exit=PR_AN_FIRST
+    Move El1=PR_MAC_NAME  Exit=PR_AN_LAST
+    Jump Exit=PS_INSTR_DONE
 
 ── PS_MK_WO_PATTERN — build WALK_ONE 3-Lux sequence ──────────
 //IN:  PR_MAC_NAME, PR_MAC_ARG1(lux_val), PR_MAC_ARG2(rel_val)
@@ -1531,28 +1589,28 @@ NOLINK
 /name_LUX (stored in NM_R): Move arg1 → RA_SR_LUX
 RVOCA PS_MK_WO_PATTERN PS_ALLOC_SUBLUX
 ITO WOP_SAVL Move El1=PR_EL1 Exit=PR_MAC_NM_R
-ITO WOP_LLO_A  Add     El1=PR_MAC_NM_R El2=C_1 Exit=RA_TMP2
-ITO WOP_LLO  Write El1=RA_TMP2 El2=Move
-ITO WOP_LLA_A  Add     El1=PR_MAC_NM_R El2=SLOT_E1 Exit=RA_TMP
-ITO WOP_LLA    Write El1=RA_TMP El2=PR_MAC_ARG1
-ITO WOP_LLT_A  Add     El1=PR_MAC_NM_R El2=SLOT_EXIT Exit=RA_TMP
-ITO WOP_LLT    Write El1=RA_TMP El2=RA_SR_LUX
+FOR C_1 SLOT_E1 SLOT_EXIT
+    ITO WOP_L{N}_A  Add     El1=PR_MAC_NM_R El2={X} Exit=RA_TMP2
+    ITO WOP_L{N}    Write El1=RA_TMP2 El2={Y}
+        C_1 > Y=Move
+        SLOT_E1 > Y=PR_MAC_ARG1
+        > Y=RA_SR_LUX
 /name_REL (stored in NM_K): Move arg2 → RA_SR_REL
 RVOCA WOP_MKR PS_ALLOC_SUBLUX
 ITO WOP_SAVR Move El1=PR_EL1 Exit=PR_MAC_NM_K
-ITO WOP_LRO_A  Add     El1=PR_MAC_NM_K El2=C_1 Exit=RA_TMP2
-ITO WOP_LRO  Write El1=RA_TMP2 El2=Move
-ITO WOP_LRA_A  Add     El1=PR_MAC_NM_K El2=SLOT_E1 Exit=RA_TMP
-ITO WOP_LRA    Write El1=RA_TMP El2=PR_MAC_ARG2
-ITO WOP_LRT_A  Add     El1=PR_MAC_NM_K El2=SLOT_EXIT Exit=RA_TMP
-ITO WOP_LRT    Write El1=RA_TMP El2=RA_SR_REL
+FOR C_1 SLOT_E1 SLOT_EXIT
+    ITO WOP_R{N}_A  Add     El1=PR_MAC_NM_K El2={X} Exit=RA_TMP2
+    ITO WOP_R{N}    Write El1=RA_TMP2 El2={Y}
+        C_1 > Y=Move
+        SLOT_E1 > Y=PR_MAC_ARG2
+        > Y=RA_SR_REL
 /name: Voca El1=SR_WALK_ONE Exit=RA_LINK
-ITO WOP_LNO_A  Add     El1=PR_MAC_NAME El2=C_1 Exit=RA_TMP2
-ITO WOP_LNO  Write El1=RA_TMP2 El2=Voca
-ITO WOP_LNA_A  Add     El1=PR_MAC_NAME El2=SLOT_E1 Exit=RA_TMP
-ITO WOP_LNA    Write El1=RA_TMP El2=SR_WALK_ONE
-ITO WOP_LNX_A  Add     El1=PR_MAC_NAME El2=SLOT_EXIT Exit=RA_TMP
-ITO WOP_LNX    Write El1=RA_TMP El2=RA_LINK
+FOR C_1 SLOT_E1 SLOT_EXIT
+    ITO WOP_N{N}_A  Add     El1=PR_MAC_NAME El2={X} Exit=RA_TMP2
+    ITO WOP_N{N}    Write El1=RA_TMP2 El2={Y}
+        C_1 > Y=Voca
+        SLOT_E1 > Y=SR_WALK_ONE
+        > Y=RA_LINK
 /chain: name_LUX → name_REL → name
 RREDI WOP_RET_r
 
@@ -1562,9 +1620,9 @@ NEWREF NEW           PS_LINE_NEW
 NEWREF SET           PS_LINE_SET
 NEWREF LINK          PS_LINE_LNK
 NEWREF LOAD          PS_LINE_LOAD
-NEWREF NOLINK        PS_LINE_NOLINK
-NEWREF YAKU_NEXO     PS_LINE_SAKU
-NEWREF YAKU_NEXO_TERM  PS_LINE_SAKU_TERM
-NEWREF YAKU_NEXO_ALIAS PS_LINE_SAKU_ALIAS
+NEWREF NEXO          PS_LINE_SAKU
+/Note: NOLINK and YAKU_NEXO* are NOT listed here — macros.re defines them first
+/and LOAD_DISPATCH_CORE handles NOLINK via first-byte SWITCH ('N' path),
+/while YAKU_NEXO reaches macros.re macro via BS_LOOKUP → YAKU_NEXO_START.
 
 LINK PS_MAIN Entry Yaku
