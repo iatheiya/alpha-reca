@@ -19,7 +19,7 @@ XI.2 fix — single source of truth for XLEN-dependent SF_* strings:
   Now:
     yaku.re   declares NEW SF_*  (name + no value — word stays 0 until SET)
     compiler_sf.re (generated here) provides SET SF_* with correct XLEN values
-  Changing XLEN requires editing symphony.py (XLEN constant) and re-running.
+  Changing XLEN requires editing aether.py (XLEN constant) and re-running.
 
 Usage (standalone):
   python3 gen_compiler.py          # generate files + freeze + reca_init.ll
@@ -37,11 +37,11 @@ import sys
 _HERE = os.path.dirname(os.path.abspath(__file__))
 # If this file is in a subdirectory (e.g. tooling/), root is one level up.
 # Marker: loader.py lives at the project root.
-_ROOT = _HERE if os.path.exists(os.path.join(_HERE, 'symphony.py')) else os.path.dirname(_HERE)
+_ROOT = _HERE if os.path.exists(os.path.join(_HERE, 'aether.py')) else os.path.dirname(_HERE)
 
 sys.path.insert(0, _ROOT)
 
-from symphony import AETHER_SIZE, XLEN
+from aether import AETHER_SIZE, XLEN
 
 _TEMPLATE = os.path.join(_ROOT, 'preamble_template.ll')
 
@@ -99,7 +99,7 @@ def _build_compiler_sf(xlen: int) -> list:
         '// Regenerate: python3 gen_compiler.py //',
         '// yaku.re declares NEW SF_* — this file provides the SET values. //',
         '// Yaku order: compiler_sf.re references SF_* names from yaku.re, //',
-        '// so it is automatically loaded after yaku.re by Saku. //',
+        '// so it is automatically loaded after yaku.re by Wax. //',
         '',
     ]
 
@@ -127,7 +127,7 @@ def _build_compiler_sf(xlen: int) -> list:
 
 
 def generate_artifacts(verbose: bool = True) -> None:
-    """Generate layout.re, preamble.re, compiler_sf.re from current symphony.py constants.
+    """Generate layout.re, preamble.re, compiler_sf.re from current aether.py constants.
 
     Called by loader.py freeze() before loading .re files, so that
     aria/layout.re (K_XLEN, K_AETHER_SIZE) is always up to date.
@@ -153,7 +153,7 @@ def generate_artifacts(verbose: bool = True) -> None:
         ('K_AETHER_SIZE', AETHER_SIZE),
         ('K_XLEN',        XLEN),
     ]:
-        layout_lines.append(f'NEWSET {lname} {lval}')
+        layout_lines.append(f'SET {lname} {lval}')
     layout_lines.append('')
     with open(layout_path, 'w') as lf:
         lf.write('\n'.join(layout_lines))
@@ -170,7 +170,7 @@ def generate_artifacts(verbose: bool = True) -> None:
         '// ── PREAM_* Lux ──────────────────────────────────────────────────────────//',
     ]
     for i, word in enumerate(packed):
-        out.append(f'NEWSET PREAM_{i:04d} {word}')
+        out.append(f'SET PREAM_{i:04d} {word}')
     out.append('')
     out.append(f'// PREAM stats: {len(preamble_text)} bytes -> {len(packed)} Lux //')
     out.append('')
@@ -188,8 +188,8 @@ def generate_artifacts(verbose: bool = True) -> None:
 
 
 def _needs_regen() -> bool:
-    """Return True if generated files are missing or older than symphony.py."""
-    symphony_mtime = os.path.getmtime(os.path.join(_ROOT, 'symphony.py'))
+    """Return True if generated files are missing or older than aether.py."""
+    aether_mtime = os.path.getmtime(os.path.join(_ROOT, 'aether.py'))
     targets = [
         os.path.join(_ROOT, 'generated', 'layout.re'),
         os.path.join(_ROOT, 'generated', 'preamble.re'),
@@ -198,7 +198,7 @@ def _needs_regen() -> bool:
     for t in targets:
         if not os.path.exists(t):
             return True
-        if os.path.getmtime(t) < symphony_mtime:
+        if os.path.getmtime(t) < aether_mtime:
             return True
     return False
 
@@ -210,7 +210,7 @@ if __name__ == '__main__':
         packed = _pack_bytes(preamble_text)
         out = ['// preamble.re preview (first 20 lines):']
         for i, word in enumerate(packed[:18]):
-            out.append(f'NEWSET PREAM_{i:04d} {word}')
+            out.append(f'SET PREAM_{i:04d} {word}')
         for line in out:
             print(line)
         print(f'Total: {len(packed)} PREAM Lux, {len(preamble_text)} bytes')
@@ -225,7 +225,7 @@ if __name__ == '__main__':
 
         # Generate reca_init.ll from the freshly frozen binary.
         # Authoritative static initialiser for the compiled binary.
-        from symphony import Aether, AETHER_SIZE as _AS, XLEN as _XLEN
+        from aether import Aether, AETHER_SIZE as _AS, XLEN as _XLEN
         _K_WATERMARK_LUX = 2
         s = Aether()
         s.thaw(_BIN)
@@ -251,5 +251,12 @@ if __name__ == '__main__':
         _ri_path = os.path.join(_ROOT, 'reca_init.ll')
         with open(_ri_path, 'w') as _f:
             _f.write('\n'.join(lines))
-        _nz = lines.count('  store')  # faster than counting in text
+        _nz = sum(1 for _l in lines if _l.startswith('  store'))  # was
+        # `lines.count('  store')` -- an exact-equality count against
+        # the bare string '  store', which never matches any real line
+        # (every real line is '  store i{XLEN} {v}, ptr ...', always
+        # longer) -- always printed 0 regardless of how many store
+        # instructions were actually written. The file itself was
+        # always correct; only this diagnostic count was wrong. See
+        # BUGS.md Pattern Z.
         print(f'Wrote {_ri_path}: {_nz} store instructions', file=sys.stderr)

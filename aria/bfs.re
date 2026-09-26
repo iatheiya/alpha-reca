@@ -1,5 +1,6 @@
 /============================================================
-//aria/bfs.re — BFS protocol registers and tunable size constants
+//
+aria/bfs.re — BFS protocol registers and tunable size constants
 
 Declares the registers used by the compiler's BFS traversal,
 VS (visited bitset), and circular queue implementation.
@@ -18,10 +19,11 @@ RA_BQ_HEAD: dequeue pointer (absolute, wraps mod BFS_QUEUE_SIZE)
 RA_BQ_TAIL: enqueue pointer
 Empty: RA_BQ_HEAD == RA_BQ_TAIL
 
-DEPENDENCY: aspects.re, runtime/layout.re (for K_BFS_VS_WORDS)//
+DEPENDENCY: aspects.re, runtime/layout.re (for K_BFS_VS_WORDS)
+//
 
 ── Tunable size constants ────────────────────────────────────
-NEWSET BFS_QUEUE_SIZE 8192   /circular BFS queue capacity (luces) — must exceed ITO_REGISTRY size
+SET BFS_QUEUE_SIZE Value=8192 /circular BFS queue capacity (luces) — must exceed NOVA_REGISTRY size
 
 ── Registers ─────────────────────────────────────────────────
 NEW RA_BQ_BASE
@@ -29,10 +31,11 @@ NEW RA_BQ_HEAD
 NEW RA_BQ_TAIL
 
 NEW RA_VS_BASE
-NEW RA_VS_ID    /input to VS_TEST_SET: Lux ID to test-and-set
+NEW RA_VS_ID  /input to VS_TEST_SET: Lux ID to test-and-set
 
 ── FRONTIER WALKER ───────────────────────────────────────────────────────────
-//Walk all ITO luces reachable via AutoNext lumina only (loader-injected adjacency).
+//
+Walk all NOVA luces reachable via AutoNext lumina only (loader-injected adjacency).
 Luces with no incoming AutoNext = entry points (frontier).
 Luces where all AutoNext predecessors are "ready" = ready to execute in parallel.
 
@@ -45,33 +48,34 @@ This is the foundation for dataflow-parallel execution:
 Current: sequential frontier walk using BFS queue.
 Future: integrate with SCHED_FORK for actual parallelism.
 
-DEPENDENCY: aspects.re  registers.re  constants.re  auto_link.re  bfs.re//
+DEPENDENCY: aspects.re  registers.re  constants.re  auto_link.re  bfs.re
+//
 
-NEW RA_FW_ENTRY    /IN: start lux for frontier walk
-NEW RA_FW_CUR      /current lux during walk
-NEW RA_FW_REL      /scratch: relation being checked
-NEW RA_FW_RESULT   /OUT: 1 if frontier lux (no AutoNext predecessor), 0 if not
+NEW RA_FW_ENTRY  /IN: start lux for frontier walk
+NEW RA_FW_CUR  /current lux during walk
+NEW RA_FW_REL  /scratch: relation being checked
+NEW RA_FW_RESULT  /OUT: 1 if frontier lux (no AutoNext predecessor), 0 if not
 
 ── FW_IS_FRONTIER: check if RA_FW_ENTRY has no AutoNext predecessors ────────
-//Scans lumina of RA_FW_ENTRY looking for any lumen with rel==AutoNext.
+//
+Scans lumina of RA_FW_ENTRY looking for any lumen with rel==AutoNext.
 If found: not a frontier lux (has predecessor via AutoNext).
 OUT: RA_FW_RESULT = 1 if frontier (no AutoNext in), 0 if has predecessor.
 Note: this checks INCOMING AutoNext lumina, which requires reverse index.
 Simplified: checks OUTGOING AutoNext lumina on the lux itself
 (tells us if this lux was loader-injected, not if it is a frontier).
-Non-leaf.//
+Non-leaf.
+//
 NOLINK
     /Start: assume frontier (1)
-    ITO FW_IS_FRONTIER Move  El1=C_1           Exit=RA_FW_RESULT
+    NOVA FW_IS_FRONTIER Op=Move El1=C_1 Exit=RA_FW_RESULT
     /Scan lumina of RA_FW_ENTRY
-    ITO FW_POS_I     Add   El1=RA_FW_ENTRY   El2=C_1  Exit=RA_AL_POS
+    NOVA FW_POS_I Op=Add El1=RA_FW_ENTRY El2=C_1 Exit=RA_AL_POS
+    NOVA FW_LOOP Op=Read El1=RA_AL_POS Exit=RA_FW_REL
+    JZ FW_RELZ El1=RA_FW_REL Exit=FW_DONE /absence → no AutoNext found
+    JEQ FW_ANCK El1=RA_FW_REL El2=AutoNext Exit=FW_HAS_AN /found AutoNext → not frontier
+    NOVA FW_ADV Op=Add El1=RA_AL_POS El2=C_2 Exit=RA_AL_POS
+    NOVA FW_LB Op=Jump Exit=FW_LOOP
     NOLINK
-    ITO FW_LOOP      Read  El1=RA_AL_POS     Exit=RA_FW_REL
-    JZ FW_RELZ RA_FW_REL FW_DONE             /absence → no AutoNext found
-    JEQ FW_ANCK RA_FW_REL AutoNext FW_HAS_AN /found AutoNext → not frontier
-    ITO FW_ADV       Add   El1=RA_AL_POS El2=C_2 Exit=RA_AL_POS
-    ITO FW_LB        Jump  Exit=FW_LOOP
-    NOLINK
-    CLEAR FW_HAS_AN   RA_FW_RESULT
-    NOLINK
+    CLEAR FW_HAS_AN El1=RA_FW_RESULT
     RREDI FW_DONE

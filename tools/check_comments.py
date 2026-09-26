@@ -1,131 +1,294 @@
 #!/usr/bin/env python3
-"""check_comments.py — Block comment span finder and classifier.
+"""check_comments.py -- Comment-integrity checker for .re files.
+
+The single authoritative comment checker. `iris.py --lost` delegates here, so
+the "did a comment swallow real code?" logic lives in exactly one place.
+
+Ground truth is the loader's own `_strip_comments` -- the exact routine every
+load uses. No reimplemented comment scanner (that would drift). A line's
+post-strip text is what the loader really sees: if a real command line strips
+to empty, its code was eaten by a comment.
+
+Bug signal (deterministic, low-noise):
+  A comment that swallows code always eats a *run* of real commands -- every
+  command line from the bad `//` until parity re-balances (wax.re L203 ate
+  ~60). Prose that merely *starts* with a command word ("RCALL_AT redirects
+  ...", "For each ...") is isolated (one line) and carries prose tokens
+  (lowercase words, ':' '(' ',' ...). So:
+
+      >= 2 swallowed *real-command* lines in a file  ==  DEFINITE BUG.
+
+  A single swallowed real-command line is reported as advisory (usually a
+  usage example written inside a comment), never as a hard bug.
+
+  A "real-command line" = first token is a command (primitive or NEWREF macro)
+  and every token is code-like (identifier / KEY=VALUE / number / aspect) with
+  no prose tokens. FOR-template bases (a token containing '{', e.g.
+  `CHAIN_MODSCAN{N}`) are not real symbols and are skipped.
 
 Usage:
-    python3 check_comments.py [--threshold N]   # find + classify suspicious spans (default)
-    python3 check_comments.py --spans-only       # just list spans
-
-For every suspicious block-comment span (>= threshold lines, or never
-closed), classify it: does the swallowed region contain lines that look
-like REAL commands as first token? If so, this is very likely a
-missing-closing-'//' bug swallowing real code.
-
-When a flagged line is actually legitimate prose (e.g. "NEW MyNote" as
-an example), see CONVENTIONS.md "Command-like words inside prose" for
-the quoting convention used to silence the false positive.
+    python3 check_comments.py            # definite bugs (silent+OK when clean)
+    python3 check_comments.py --advisory # also show isolated/long spans
+    python3 check_comments.py --spans FILE.re # unfiltered listing, one file
 """
-import sys, os, glob
+import sys, os, re
 
-# Path discovery: works whether this file is at project root or in a subdirectory.
-# Marker: loader.py lives at the project root.
 _HERE = os.path.dirname(os.path.abspath(__file__))
-_ROOT = _HERE if os.path.exists(os.path.join(_HERE, 'symphony.py')) else os.path.dirname(_HERE)
+_ROOT = _HERE if os.path.exists(os.path.join(_HERE, 'aether.py')) else os.path.dirname(_HERE)
 sys.path.insert(0, _ROOT)
 
-from loader import discover_newref_macro_names
-THRESHOLD = 8
-if '--threshold' in sys.argv:
-    _ti = sys.argv.index('--threshold')
-    if _ti + 1 < len(sys.argv):
-        THRESHOLD = int(sys.argv[_ti + 1])
-SPANS_ONLY = '--spans-only' in sys.argv
+from loader import _strip_comments, re_sources
+from iris_common import wax_cmd_macro_names
 
-all_re = sorted(glob.glob(os.path.join(_ROOT, '*.re')))
-
-def find_spans(filepath):
-    with open(filepath, encoding='utf-8', errors='replace') as f:
-        raw_lines = f.readlines()
-    spans = []
-    in_block = False
-    block_start = None
-    for lineno, raw in enumerate(raw_lines, 1):
-        line = raw.rstrip('\n')
-        stripped_line = line.lstrip()
-        if not in_block and stripped_line.startswith('/') and not stripped_line.startswith('//'):
-            continue
-        in_str = False
-        i = 0
-        while i < len(line):
-            ch = line[i]
-            if in_str:
-                if ch == '"': in_str = False
-                i += 1
-            elif in_block:
-                if (ch == '/' and i + 1 < len(line) and line[i+1] == '/'
-                        and (i == 0 or line[i-1] != '/')
-                        and (i + 2 >= len(line) or line[i+2] != '/')):
-                    in_block = False
-                    spans.append((block_start, lineno, lineno - block_start + 1))
-                    block_start = None
-                    break
-                else:
-                    i += 1
-            else:
-                if ch == '"':
-                    in_str = True; i += 1
-                elif (ch == '/' and i + 1 < len(line) and line[i+1] == '/'
-                      and (i == 0 or line[i-1] != '/')
-                      and (i + 2 >= len(line) or line[i+2] != '/')):
-                    in_block = True
-                    block_start = lineno
-                    i += 2
-                else:
-                    i += 1
-    if in_block:
-        spans.append((block_start, None, len(raw_lines) - block_start + 1))
-    return spans
-
-print(f"Scanning {len(all_re)} .re files (threshold={THRESHOLD} lines) via real _strip_comments char-scan logic...\n")
-total = 0
-for fp in all_re:
-    for start, end, n in find_spans(fp):
-        if n >= THRESHOLD or end is None:
-            total += 1
-            end_str = str(end) if end is not None else "EOF (NEVER CLOSED)"
-            print(f"  {os.path.basename(fp):20s} lines {start}-{end_str}  ({n} lines)")
-print(f"\nTotal suspicious spans: {total}")
-
-if SPANS_ONLY:
-    sys.exit(0)
-
-# True language primitives: a small, stable set that isn't NEWREF-defined in
-# macros.re (ITO/NEW/etc. are foundational keywords, not user-extensible
-# macros, so hardcoding these specifically is fine -- they don't drift the
-# way a list of *macro* names does).
 _PRIMITIVE_CMDS = {
-    'ITO', 'NEW', 'NEWSET', 'SET', 'LINK', 'SETREF', 'BLOCK', 'NOLINK',
-    'NORESTORE', 'ALLOC_RAW', 'READ_BODY', 'WRITE_OUT',
+    'NOVA', 'NEW', 'SET', 'LINK',
+    'NOLINK', 'RVOCA', 'RREDI', 'JEQ', 'JZ', 'CLEAR',
+    'NOP', 'NOVAE', 'FOR', 'SWITCH', 'SAVE', 'ALLOC_TO', 'ALLOC_RAW',
 }
 
-_REAL_CMDS = _PRIMITIVE_CMDS | discover_newref_macro_names()
+# A code token: identifier, KEY=VALUE, signed integer, or aspect/keyword.
+# Deliberately excludes prose (lowercase-only words, or anything with :(),.').
+_CODE_TOK = re.compile(r'^(?:[A-Za-z_][A-Za-z0-9_]*(?:=[A-Za-z0-9_]+)?|-?[0-9]+)$')
+_ADVISORY_SPAN_LINES = 8
 
-def classify(filepath, start, end):
+
+def _real_cmds():
+    try:
+        return _PRIMITIVE_CMDS | wax_cmd_macro_names()
+    except Exception:
+        return set(_PRIMITIVE_CMDS)
+
+
+def _looks_like_command(raw_stripped, real):
+    """True if the raw line is a genuine command line (not prose, not template)."""
+    toks = raw_stripped.split()
+    if len(toks) < 2:
+        return False
+    if toks[0].upper() not in real:
+        return False
+    if '{' in toks[1]:            # FOR-template base -- not a real symbol
+        return False
+    # every token must be code-like; a single prose token disqualifies the line
+    for t in toks:
+        if not _CODE_TOK.match(t):
+            return False
+    return True
+
+
+def analyze_file(filepath, real=None):
+    """Analyse one .re file. Returns dict with swallowed runs and spans."""
+    real = real if real is not None else _real_cmds()
     with open(filepath, encoding='utf-8', errors='replace') as f:
-        lines = f.readlines()
-    real_end = end if end is not None else len(lines)
-    hits = []
-    for ln in range(start, real_end):  # 0-indexed slice covers start+1..end-1 (1-indexed)
-        if ln >= len(lines):
-            break
-        text = lines[ln].strip()
-        if not text:
-            continue
-        first = text.split()[0].upper() if text.split() else ''
-        if first in _REAL_CMDS:
-            hits.append((ln + 1, text[:70]))
-    return hits
+        raw_lines = f.readlines()
+    stripped = _strip_comments(raw_lines)
+    # _strip_comments returns (lineno, text) only. The raw source line is no
+    # longer carried in it (it was there for the old blank-line closing rule),
+    # so this checker -- whose whole job is comparing the stripped result
+    # against the raw source -- reads the raw line from its own copy.
+    raw_by_lineno = {n: l.rstrip('\n') for n, l in enumerate(raw_lines, 1)}
 
-print(f"Classifying suspicious spans (threshold={THRESHOLD})...\n")
-for fp in all_re:
-    for start, end, n in find_spans(fp):
-        if n < THRESHOLD and end is not None:
+    swallowed = []          # (lineno, text, region_start) real commands eaten
+    region_start = None     # start of current empty-strip run (the opening //)
+    for (lineno, text) in stripped:
+        s = raw_by_lineno.get(lineno, '').lstrip()
+        empty = (text.strip() == '')
+        if empty:
+            if region_start is None:
+                region_start = lineno
+            # only flag if this empty line is actually a real command in the raw
+            if s and s[0] != '/' and _looks_like_command(s, real):
+                swallowed.append((lineno, s[:72], region_start))
+        else:
+            region_start = None
+
+    # block-comment spans (advisory)
+    # The canonical rule (comments.re, COMMENTS.md): a marker is a line that
+    # is exactly "//", whitespace aside -- nothing else opens or closes a
+    # block. This used to test `s[:2] == '//'`, which also treated a "//text"
+    # line as an opener; under the simplified rule that line is just an
+    # ordinary dropped slash-line, and counting it as a marker put every
+    # following span off by one block.
+    spans, in_block, start = [], False, None
+    for (lineno, _text) in stripped:
+        orig = raw_by_lineno.get(lineno, '')
+        if orig.strip() != '//':
             continue
-        hits = classify(fp, start, end)
-        if hits:
-            end_str = str(end) if end is not None else "EOF"
-            print(f"=== {os.path.basename(fp)} {start}-{end_str} ({n} lines) — "
-                  f"{len(hits)} real-command line(s) swallowed: LIKELY BUG ===")
-            for ln, text in hits[:5]:
-                print(f"     {ln}: {text}")
-            if len(hits) > 5:
-                print(f"     ... and {len(hits)-5} more")
+        if not in_block:
+            in_block, start = True, lineno
+        else:
+            spans.append((start, lineno, lineno - start + 1))
+            in_block = False
+    if in_block:
+        spans.append((start, None, len(raw_lines) - start + 1))
+
+    return {'file': filepath, 'swallowed': swallowed, 'spans': spans}
+
+
+def analyze_all(root=None):
+    real = _real_cmds()
+    return [analyze_file(fp, real) for fp in re_sources(root or _ROOT)]
+
+
+def definite_bug(res):
+    return len(res['swallowed']) >= 2
+
+
+def report(results, advisory=False):
+    buggy = 0
+    for res in results:
+        name = os.path.basename(res['file'])
+        sw = res['swallowed']
+        if definite_bug(res):
+            buggy += 1
+            region = sw[0][2]
+            print(f"\n### {name} -- DEFINITE BUG: {len(sw)} command line(s) swallowed by a comment")
+            print(f"    likely cause: a '//' delimiter at/after line {region} "
+                  f"(unclosed block or embedded '//' in a comment body)")
+            for ln, txt, _rs in sw[:8]:
+                print(f"       L{ln}: {txt}")
+            if len(sw) > 8:
+                print(f"       ... +{len(sw)-8} more")
+    if buggy == 0:
+        print("Comment integrity: clean -- no runs of swallowed commands.")
+    if advisory:
+        print("\n-- advisory --")
+        for res in results:
+            name = os.path.basename(res['file'])
+            if len(res['swallowed']) == 1:
+                ln, txt, _ = res['swallowed'][0]
+                print(f"   {name} L{ln}: single command-like line inside a comment "
+                      f"(usually a usage example): {txt}")
+            for start, end, n in res['spans']:
+                if end is None:
+                    print(f"   {name}: block comment opened at line {start} never closed (runs to EOF)")
+                elif n >= _ADVISORY_SPAN_LINES:
+                    print(f"   {name}: long comment span {start}-{end} ({n} lines)")
+    return buggy
+
+
+def spans_report(filepath):
+    """Unfiltered comment-span + swallowed-line listing for one file.
+
+    No threshold gating, unlike `report()`/`definite_bug()` (which only
+    surface >=2-swallowed-line runs as bugs and >=_ADVISORY_SPAN_LINES spans
+    as advisory): every span and every swallowed line this file's real
+    `_strip_comments` pass produces is shown, so a single file can be
+    inspected directly against the loader's own ground truth. This is the
+    surviving use case of the old `sim.py --lexer`/`--prepass` file
+    inspection -- same question ("where does the real comment/token scan
+    see this file's structure"), answered by calling `_strip_comments`
+    itself rather than a separate reimplementation that could drift from it.
+    """
+    if not os.path.exists(filepath):
+        print(f"File not found: {filepath}")
+        return 1
+    res = analyze_file(filepath)
+    name = os.path.basename(filepath)
+    print(f"=== Comment spans: {name} ===\n")
+
+    if not res['spans']:
+        print("Comment blocks (//...//): none")
+    else:
+        print(f"Comment blocks (//...//): {len(res['spans'])}")
+        for start, end, n in res['spans']:
+            if end is None:
+                print(f"  L{start}: opened, never closed (runs to EOF, {n} lines)")
+            else:
+                print(f"  L{start}-{end}: {n} line(s)")
+
+    print()
+    if not res['swallowed']:
+        print("Swallowed real-command lines: none")
+    else:
+        print(f"Swallowed real-command lines: {len(res['swallowed'])}")
+        for ln, txt, region_start in res['swallowed']:
+            print(f"  L{ln} (comment opened L{region_start}): {txt}")
+
+    return 0
+
+
+def lost_symbols(root=None):
+    """Structured result for iris.py --lost delegation.
+
+    Returns {basename: [ (lineno, text), ... ]} for files with a definite
+    swallowing bug (>= 2 swallowed real commands). Empty dict = clean.
+    """
+    out = {}
+    for res in analyze_all(root):
+        if definite_bug(res):
+            out[os.path.basename(res['file'])] = [(ln, txt) for ln, txt, _ in res['swallowed']]
+    return out
+
+
+def main(argv):
+    if '--spans' in argv:
+        rest = [a for a in argv if a != '--spans' and not a.startswith('-')]
+        if not rest:
+            print("Usage: python3 check_comments.py --spans FILE.re")
+            return 0
+        return spans_report(rest[0])
+    advisory = '--advisory' in argv
+    return 1 if report(analyze_all(), advisory=advisory) else 0
+
+
+# ── iris hub contract ─────────────────────────────────────────────────────
+# check_comments stays a standalone file (the authoritative comment
+# analyser, large and self-contained) but plugs into the iris hub via these
+# commands. NEEDS="text": pure source analysis, no build.
+from iris import Command
+
+
+def _cmd_comments(ctx) -> int:
+    """Comment integrity: any run of real command lines swallowed by a
+    comment block (>= 2 in a file == definite bug)."""
+    return 1 if report(analyze_all()) else 0
+
+
+def _cmd_lost(ctx) -> int:
+    """Report real code swallowed by broken comment blocks. Same detection
+    as the comments check, presented as a per-file listing (was diag --lost,
+    which only ever delegated here)."""
+    print("=== Lost code (real commands swallowed by comment blocks) ===\n")
+    lost = lost_symbols(_ROOT)
+    if not lost:
+        print("No swallowed code — comment integrity clean  \u2713")
+        return 0
+    total = 0
+    for fname, items in sorted(lost.items()):
+        total += len(items)
+        print(f"{fname}: {len(items)} swallowed —")
+        for ln, txt in items[:8]:
+            print(f"    L{ln}: {txt}")
+        if len(items) > 8:
+            print(f"    ... +{len(items) - 8} more")
+    print(f"\nTotal swallowed command lines: {total}")
+    return 1
+
+
+def _cmd_spans(ctx, args) -> int:
+    """Unfiltered comment-span + swallowed-line listing for one file, no
+    threshold gating -- the surviving use case of the old `sim.py
+    --lexer`/`--prepass` file inspection, built on the same
+    `_strip_comments` ground truth instead of a separate reimplementation."""
+    targets = [x for x in args if not x.startswith('-')]
+    if not targets:
+        print("Usage: python3 iris.py --spans FILE.re")
+        return 0
+    target_path = targets[0]
+    if not os.path.isabs(target_path):
+        target_path = os.path.join(_ROOT, target_path)
+    return spans_report(target_path)
+
+
+COMMANDS = [
+    Command("comments", "text", _cmd_comments, is_check=True,
+            help="find real command lines swallowed by comment blocks"),
+    Command("lost", "text", _cmd_lost, is_check=False,
+            help="list code swallowed by broken comment blocks"),
+    Command("spans", "text", _cmd_spans, is_check=False, takes_args=True,
+            help="unfiltered comment-span + swallowed-line listing for one file"),
+]
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv[1:]))

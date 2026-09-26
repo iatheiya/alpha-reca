@@ -1,4 +1,5 @@
-//aria/arena.re — Region-based allocation (production)
+//
+aria/arena.re — Region-based allocation (production)
 
 /ROLE: Bump-allocator arenas with full nesting support.
 
@@ -25,35 +26,40 @@
 /inside a function that was itself entered via RVOCA (so RA_SP points
 /at a live frame).
 
-/DEPENDENCY: aspects.re  constants.re  registers.re  alloc.re  callstack.re//
+/DEPENDENCY: aspects.re  constants.re  registers.re  alloc.re  callstack.re
+//
 
 /── ARENA_MARK: compute addr of arena mark in caller's frame (RA_SP + 2) ──────
 /Used by ARENA_OPEN, ARENA_CLOSE, ARENA_SIZE. Leaf.//
 NOLINK
-    ITO ARENA_MARK  Add   El1=RA_SP  El2=C_2  Exit=RA_ALLOC_TMP
+    NOVA ARENA_MARK Op=Add El1=RA_SP El2=C_2 Exit=RA_ALLOC_TMP
 RREDI AM_RET
 
 /── ARENA_OPEN: save cursor on call stack, open new arena region ──────────────
-//Saves K_CURSOR.word into call stack frame slot 2.
+//
+Saves K_CURSOR.word into call stack frame slot 2.
 /Non-leaf — caller must have entered via RVOCA (RA_SP points at live frame).
-/After return, new allocations go into the arena region.//
+/After return, new allocations go into the arena region.
+//
 NOLINK
-    ITO ARENA_OPEN  Read  El1=K_CURSOR       Exit=RA_ALLOC_TMP2
-    RVOCA AO_MARK   ARENA_MARK
-    ITO AO_WMARK    Write El1=RA_ALLOC_TMP   El2=RA_ALLOC_TMP2
+    NOVA ARENA_OPEN Op=Read El1=K_CURSOR Exit=RA_ALLOC_TMP2
+    RVOCA AO_MARK Body=ARENA_MARK
+    NOVA AO_WMARK Op=Write El1=RA_ALLOC_TMP El2=RA_ALLOC_TMP2
 
 /── ARENA_CLOSE: restore cursor from call stack, free arena region ────────────
-//Reads saved cursor from frame slot 2 and restores K_CURSOR.
-/Non-leaf — same constraint as ARENA_OPEN.//
-NOLINK
-    RVOCA ARENA_CLOSE ARENA_MARK
-    ITO AC_RDMARK   Read  El1=RA_ALLOC_TMP   Exit=RA_ALLOC_TMP2
-    ITO ACL_WRCUR   Write El1=K_CURSOR        El2=RA_ALLOC_TMP2
+//
+Reads saved cursor from frame slot 2 and restores K_CURSOR.
+/Non-leaf — same constraint as ARENA_OPEN.
+//
+    RVOCA ARENA_CLOSE Body=ARENA_MARK
+    NOVA AC_RDMARK Op=Read El1=RA_ALLOC_TMP Exit=RA_ALLOC_TMP2
+    NOVA ACL_WRCUR Op=Key El1=K_CURSOR El2=RA_ALLOC_TMP2
 
 /── ARENA_SIZE: luces allocated since last ARENA_OPEN ───────────────────────
-//OUT: RA_ALLOC_RESULT = number of luces. Useful for profiling.//
-NOLINK
-    ITO ARENA_SIZE  Read  El1=K_CURSOR       Exit=RA_ALLOC_RESULT
-    RVOCA AS_MARK   ARENA_MARK
-    ITO AS_MARK2    Read  El1=RA_ALLOC_TMP   Exit=RA_ALLOC_TMP2
-    ITO AS_SUB      Sub   El1=RA_ALLOC_RESULT El2=RA_ALLOC_TMP2 Exit=RA_ALLOC_RESULT
+//
+OUT: RA_ALLOC_RESULT = number of luces. Useful for profiling.
+//
+    NOVA ARENA_SIZE Op=Read El1=K_CURSOR Exit=RA_ALLOC_RESULT
+    RVOCA AS_MARK Body=ARENA_MARK
+    NOVA AS_MARK2 Op=Read El1=RA_ALLOC_TMP Exit=RA_ALLOC_TMP2
+    NOVA AS_SUB Op=Sub El1=RA_ALLOC_RESULT El2=RA_ALLOC_TMP2 Exit=RA_ALLOC_RESULT

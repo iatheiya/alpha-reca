@@ -17,14 +17,13 @@ Usage:
 New flags (session 2026-06-23):
     python3 trace.py --write-watch SYM        # print old->new every time SYM address is written
     python3 trace.py --token-at SYM           # dump tokbuf+TLEN every time PC reaches SYM
-    python3 trace.py --psmain FILE.re         # run PS_MAIN against FILE (no full freeze; uses reca.bin)
     python3 trace.py --fidx                   # print SK_FIDX file-index transitions during LOAD_MAIN
     python3 trace.py --context N              # history depth for --write-watch / --token-at (default 30)
 
     python3 trace.py --find-writer SYM [SYM2...]
         Find EVERY instruction that writes to SYM's aether address.
         Catches Write (double-indirect dest), Move/Add/Sub/Mul/Read (direct exit=SYM).
-        Prints: fi, ITO name, op type, value written, and recent PC history.
+        Prints: fi, NOVA name, op type, value written, and recent PC history.
         Example: python3 trace.py --find-writer LF TAB NUL
 
 Examples:
@@ -36,9 +35,6 @@ Examples:
 
     # Dump tokbuf every time BS_PARSE_INT is entered (max 10 hits, 20 steps context)
     python3 trace.py --token-at BS_PARSE_INT --context 20
-
-    # Run PS_MAIN on a file and see parsed lines
-    python3 trace.py --psmain example.re
 
     # Track file index transitions + halt info during LOAD_MAIN
     python3 trace.py --fidx
@@ -58,12 +54,12 @@ Reusable API (import from trace):
 import sys, os, io
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
-_ROOT = _HERE if os.path.exists(os.path.join(_HERE, 'symphony.py')) else os.path.dirname(_HERE)
+_ROOT = _HERE if os.path.exists(os.path.join(_HERE, 'aether.py')) else os.path.dirname(_HERE)
 sys.path.insert(0, _ROOT)
 
 from loader import freeze, load_symbols, _BIN, load_or_freeze
 from interpreter import Interpreter
-from symphony import SLOT_OP, SLOT_E1, SLOT_E2, SLOT_EXIT, SLOT_NEXT, ITO_SIZE
+from aether import SLOT_OP, SLOT_E1, SLOT_E2, SLOT_EXIT, SLOT_NEXT, NOVA_SIZE
 
 def _parse_args(els):
     cfg = dict(
@@ -74,7 +70,6 @@ def _parse_args(els):
         loadmain=False,
         write_watch=[],   # --write-watch SYM  -- print old->new every time SYM is written
         token_at=[],      # --token-at SYM     -- dump tokbuf when PC reaches SYM
-        psmain=None,      # --psmain FILE      -- run PS_MAIN against FILE (no full freeze)
         fidx=False,       # --fidx             -- print SK_FIDX transitions
         context=30,       # --context N        -- lines of PC history for write-watch/token-at
         start_step=0,     # --start-step N     -- only activate watches from step N
@@ -113,8 +108,6 @@ def _parse_args(els):
             cfg['write_watch'].append(els[i + 1]); i += 2; continue
         elif a == '--token-at' and i + 1 < len(els):
             cfg['token_at'].append(els[i + 1]); i += 2; continue
-        elif a == '--psmain' and i + 1 < len(els):
-            cfg['psmain'] = els[i + 1]; i += 2; continue
         elif a == '--fidx':
             cfg['fidx'] = True; i += 1
         elif a == '--context' and i + 1 < len(els):
@@ -413,86 +406,10 @@ def run_loadmain():
 
 
 
-def _run_psmain(src_file, cfg):
-    """Run PS_MAIN against src_file; show parsed lines and halt info.
-    Replaces: trace_psmain.py, trace_psline.py, trace_psrb.py, test_clean_e2e.py"""
-    if not os.path.isabs(src_file):
-        src_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), src_file)
-    if not os.path.exists(src_file):
-        print(f"[psmain] ERROR: file not found: {src_file}"); return
-
-    interp, symbols = load_or_freeze()
-
-    a = interp.aether.aether
-    R = interp.R
-    rev = {v: k for k, v in R.items()}
-    dispatch = interp._dispatch
-    flux = interp.aether.flux_bottom
-    SO, SE1, SE2, SEX, SN, ITO = (interp._slot_op, interp._slot_e1, interp._slot_e2,
-                                    interp._slot_exit, interp._slot_next, interp._ito_size)
-
-    fd = os.open(src_file, os.O_RDONLY)
-    os.dup2(fd, 0); os.close(fd)
-
-    PS_MAIN = R.get('PS_MAIN')
-    if not PS_MAIN:
-        print("[psmain] ERROR: PS_MAIN not found in symbols"); return
-
-    PS_MAIN_H = R.get('PS_MAIN_H')
-    PR_LBUF   = R.get('PR_LBUF')
-    PR_LLEN   = R.get('PR_LLEN')
-    PR_EOF    = R.get('PR_EOF')
-    context   = cfg.get('context', 30)
-    max_steps = cfg.get('max_steps', 10_000_000)
-
-    history = []; lines = []; pc = PS_MAIN; steps = 0
-    print(f"[psmain] Running PS_MAIN on {src_file}")
-
-    while pc:
-        steps += 1
-        if steps > max_steps:
-            print(f"[psmain] STEP BUDGET {max_steps}"); break
-        history.append(rev.get(pc, f'#{pc}'))
-        if len(history) > context: history.pop(0)
-
-        if pc == PS_MAIN_H:
-            lbuf = int(a[PR_LBUF]) if PR_LBUF else 0
-            llen = int(a[PR_LLEN]) if PR_LLEN else 0
-            if lbuf:
-                s = ''.join(chr(int(a[lbuf + i]) & 0xFF) if 32 <= int(a[lbuf + i]) & 0xFF < 127
-                            else '' for i in range(llen))
-                lines.append(s)
-                print(f"  [psmain] LINE {len(lines):3d}: {s!r}")
-
-        op_id = a[pc + SO]
-        if op_id == 0 or op_id not in dispatch:
-            print(f"\n[psmain] HALT at {rev.get(pc, pc)}  steps={steps}")
-            if PR_EOF: print(f"[psmain] PR_EOF={int(a[PR_EOF])}")
-            print(f"[psmain] Last {len(history)} PCs:")
-            for h in history: print(f"  {h}")
-            break
-        e1 = a[pc + SE1]; e2 = a[pc + SE2]; ex = a[pc + SEX]
-        raw_n = a[pc + SN]
-        nxt = (pc + ITO) if raw_n == 0 else (raw_n if raw_n < flux else interp._exec_flux(raw_n, a))
-        try:
-            pc = dispatch[op_id](e1, e2, ex, nxt, a)
-        except Exception as err:
-            print(f"[psmain] EXCEPTION {type(err).__name__}: {err}  at {rev.get(pc, pc)}")
-            for h in history: print(f"  {h}")
-            break
-
-    print(f"\n[psmain] Done: {len(lines)} lines parsed, {steps} steps.")
-
-
 def run(els=None):
     if els is None:
         els = sys.argv[1:]
     cfg = _parse_args(els)
-
-    # ── psmain mode: run PS_MAIN on a file, no full freeze ──────────────────
-    if cfg['psmain']:
-        _run_psmain(cfg['psmain'], cfg)
-        return
 
     import io
     buf = io.StringIO(); old = sys.stderr; sys.stderr = buf
@@ -523,9 +440,9 @@ def run(els=None):
         if not pc:
             print(f"ERROR: symbol {raw!r} not found"); return
     else:
-        pc = R.get('P0_NID', 0) or R.get('PS_MAIN', 0)
+        pc = R.get('P0_NID', 0)
         if not pc:
-            print("ERROR: no entry point (P0_NID or PS_MAIN)"); return
+            print("ERROR: no entry point (P0_NID)"); return
 
     until_addr   = R.get(cfg['until_name'], 0) if cfg['until_name'] else 0
     watch_addrs  = {R[s]: s for s in cfg['watch_names'] if s in R}
@@ -573,11 +490,16 @@ def run(els=None):
 
     # fidx tracking
     _last_fidx = [-1]
-    import glob as _glob
-    _file_order = (['macros.re'] +
-                   sorted([os.path.basename(f) for f in
-                            _glob.glob(os.path.join(os.path.dirname(os.path.abspath(__file__)), '*.re'))
-                            if os.path.basename(f) != 'macros.re']))
+    # Plain alphabetical order, matching auto_discover's own (loader.py):
+    # "File order is irrelevant" there (Wave 1 sizes every name across all
+    # files before Wave 2 mints one), so there is nothing to special-case
+    # here either -- 'macros.re first' was never a real requirement, just
+    # an assumption copied from a stale comment elsewhere. Found while
+    # deleting macros.re (unrelated to that deletion otherwise).
+    # Exactly the list LOAD_MAIN walks -- the same loader function freeze()
+    # uses, so file-index names can never drift from the real order.
+    from loader import load_main_order, seed_candidates
+    _file_order = [os.path.relpath(f, _ROOT) for f in load_main_order(seed_candidates()[0])]
 
     # Aspect op-ids for structural detection
     voca_op = a[R['Voca'] + SLOT_OP] if 'Voca' in R else 0
@@ -625,7 +547,7 @@ def run(els=None):
         a1    = a[pc + SLOT_E1]
         a2    = a[pc + SLOT_E2]
         ex    = a[pc + SLOT_EXIT]
-        nxt   = a[pc + SLOT_NEXT]   # correct: read from SLOT_NEXT, not pc+ITO_SIZE
+        nxt   = a[pc + SLOT_NEXT]   # correct: read from SLOT_NEXT, not pc+NOVA_SIZE
 
         # write-watch history
         if _ww_history is not None:
@@ -846,10 +768,16 @@ def run(els=None):
 
 def make_patched_run(
     on_write_dest=None,   # {sym_name: callback(ev)} — fires when Write/Move/Add writes to sym
+    on_write_addr=None,   # {raw_addr: callback(ev)} — same, but by raw aether address (no
+                           # Python symbol needed — for self-hosted-only addresses)
     on_voca_target=None,  # {sym_name: callback(ev)} — fires when Voca's target is sym
-    on_equal_nxt=None,    # {sym_name: callback(ev)} — fires when Equal fires with this nxt (ITO identity)
+    on_equal_nxt=None,    # {sym_name: callback(ev)} — fires when Equal fires with this nxt (NOVA identity)
     context=30,           # PC history depth
     suppress_stderr=True, # hide freeze() stderr output
+    sample_every=0,       # if >0, append (step, list-of-recent-pc-names) to the returned
+                           # 'samples' list every this-many steps — for seeing what a long
+                           # run is doing deep in, without needing to name a specific symbol
+                           # to watch (e.g. suspected infinite loops far from any known hook)
 ):
     """
     Run freeze() with patches applied to the interpreter dispatch table.
@@ -861,28 +789,59 @@ def make_patched_run(
     import loader as _ldr
     import interpreter as _imod
 
+    # load_symbols() silently returns {} if reca.sym doesn't exist yet --
+    # every on_*_target/on_write_dest dict would then resolve to nothing,
+    # and every callback would silently never fire (looks exactly like
+    # "this never happens" instead of "the tool never turned on"). Force
+    # a real build first if needed, so symbol resolution below is never
+    # silently empty. See BUGS.md Pattern Z's tracing-tool-reliability
+    # notes -- this exact failure mode cost real debugging time this
+    # session before being traced back to here.
     syms = load_symbols()
+    if not syms:
+        _buf = _io.StringIO(); _old = sys.stderr; sys.stderr = _buf
+        try:
+            _ldr.freeze()
+        finally:
+            sys.stderr = _old
+        syms = load_symbols()
+        if not syms:
+            raise RuntimeError(
+                "make_patched_run: symbol table is still empty after a "
+                "fresh freeze() -- something is genuinely broken, not "
+                "just a missing/stale reca.sym file.")
     rev  = {v: k for k, v in syms.items() if v}
 
     # Resolve symbol names → aether addresses
     def _resolve_names(d):
         if not d: return {}
+        missing = [k for k in d if k not in syms]
+        if missing:
+            raise KeyError(
+                f"make_patched_run: unknown symbol name(s) {missing!r} -- "
+                f"check spelling; a silently-empty callback dict here "
+                f"looks identical to 'this event never happens'.")
         return {syms[k]: v for k, v in d.items() if k in syms}
 
     wd_cbs  = _resolve_names(on_write_dest)    # addr → callback
+    if on_write_addr:
+        wd_cbs.update(on_write_addr)           # raw addr → callback, no name needed
     vt_cbs  = _resolve_names(on_voca_target)   # addr → callback (Voca target lux addr)
-    eq_cbs  = _resolve_names(on_equal_nxt)     # addr → callback (nxt of the Equal ITO)
+    eq_cbs  = _resolve_names(on_equal_nxt)     # addr → callback (nxt of the Equal NOVA)
 
     orig_run = _imod.Interpreter._run
     fi_cur   = [0]
     step_ctr = [0]
     history  = []          # rolling list of recent pc_names
     fi_evts  = []          # fi transitions: (step, old_fi, new_fi)
+    samples  = []          # (step, list-of-recent-pc-names), every sample_every steps
 
     def _push_hist(name):
         history.append(name)
         if len(history) > context + 5:
             history.pop(0)
+        if sample_every and step_ctr[0] % sample_every == 0:
+            samples.append((step_ctr[0], list(history)))
 
     def _mk_ev(op, aether, pc, a1, a2, value):
         return dict(
@@ -942,7 +901,7 @@ def make_patched_run(
         def tsub(a1, a2, ex, nxt, ae):
             step_ctr[0] += 1; _push_hist(rev.get(nxt, f'#{nxt}'))
             if wd_cbs and ex in wd_cbs:
-                from symphony import _MASK64
+                from aether import _MASK64
                 from interpreter import _s64
                 val = int((_s64(ae[a1]) - _s64(ae[a2])) & _MASK64) if (a1 and a2) else 0
                 wd_cbs[ex](_mk_ev('Sub', ae, nxt, a1, a2, val))
@@ -1014,18 +973,94 @@ def make_patched_run(
         if suppress_stderr: sys.stderr = old_err
         _imod.Interpreter._run = orig_run
 
-    return {'loader': ldr, 'fi_events': fi_evts}
+    return {'loader': ldr, 'fi_events': fi_evts, 'samples': samples}
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # run_find_writer — CLI implementation of --find-writer
 # ─────────────────────────────────────────────────────────────────────────────
 
+def run_watch_pc(pc_names, hit_limit=30, context=15):
+    """
+    Generic "watch these PC names during a real freeze() run" mode --
+    consolidates the one-off `python3 - <<'PYEOF' ... PYEOF` scripts
+    this session kept rebuilding from scratch (and re-introducing the
+    same methodology bugs into) for simple "does this line get
+    reached, how many times, in what order" questions.
+
+    Reuses make_patched_run (already correct -- calls the real,
+    unmodified `_run`/`orig_run`, only swaps individual dispatch-table
+    handlers, so it automatically takes whichever branch the real
+    `freeze()` call actually takes; see BUGS.md/TOOLING.md for why a
+    from-scratch loop reimplementation is risky instead).
+
+    Prints, for each watched name: total hit count, and the step number
+    + a short PC history for the first `hit_limit` hits. For "does this
+    ever get reached at all" and "in what rough order do these things
+    happen relative to each other" questions -- most of what this
+    session's own one-off scripts were built for -- this one call
+    replaces them.
+
+    For anything needing a *register's own value* at each hit (not just
+    "was this PC reached"), use make_patched_run directly with its own
+    on_write_dest/on_voca_target/on_equal_nxt callbacks instead -- this
+    helper is deliberately PC-only, for the common, simpler case.
+    """
+    syms = load_symbols()
+    rev = {v: k for k, v in syms.items() if v}
+    missing = [n for n in pc_names if n not in syms]
+    if missing:
+        print(f'[watch-pc] Unknown symbols: {missing}')
+        pc_names = [n for n in pc_names if n in syms]
+    if not pc_names:
+        print('[watch-pc] No targets.'); return
+
+    targets = {n: syms[n] for n in pc_names}
+    hits = {n: [] for n in pc_names}
+    counts = {n: 0 for n in pc_names}
+    addr_to_name = {v: k for k, v in targets.items()}
+
+    def make_cb(name):
+        def cb(ev):
+            counts[name] += 1
+            if len(hits[name]) < hit_limit:
+                hits[name].append((ev['step'], list(ev['history'][-context:])))
+        return cb
+
+    # Watch via on_voca_target if the PC is itself a Voca's own target
+    # (a real, RVOCA-called entry point); otherwise fall back to
+    # on_equal_nxt (works for any JEQ/JZ-reached label) -- between the
+    # two, most real labels are reachable one way or the other. For a
+    # plain NOVA reached only via auto-chain, neither fires; use
+    # make_patched_run directly with a custom hook in that case.
+    result = make_patched_run(
+        on_voca_target={n: make_cb(n) for n in pc_names},
+        on_equal_nxt={n: make_cb(n) for n in pc_names},
+        context=context,
+    )
+
+    print(f"[watch-pc] Watched: {', '.join(f'{n}@{a}' for n, a in targets.items())}")
+    print()
+    for n in pc_names:
+        print(f"  {n}: {counts[n]} hit(s)")
+        for step, hist in hits[n]:
+            print(f"    step={step}")
+            if hist:
+                print(f"      history: {' -> '.join(hist)}")
+    a = result['loader'].interp.aether.aether
+    sk_fidx = syms.get('SK_FIDX')
+    if sk_fidx:
+        print()
+        print(f"  SK_FIDX at end: {int(a[sk_fidx])}")
+    return result
+
+
+
 def run_find_writer(target_names, context=30):
     """
     Find every instruction that writes to each target symbol's aether address.
     Catches: Write (dest=aether[a1]), Move/Add/Sub/Mul/Read (dest=exit).
-    Prints: fi, ITO name, op, value written, and recent PC history.
+    Prints: fi, NOVA name, op, value written, and recent PC history.
     """
     syms = load_symbols()
     rev  = {v: k for k, v in syms.items() if v}
@@ -1074,10 +1109,16 @@ def run_find_writer(target_names, context=30):
 if __name__ == '__main__':
     if '--loadmain' in sys.argv:
         run_loadmain()
-    elif '--psmain' in sys.argv:
-        run()
     elif '--find-writer' in sys.argv:
         _cfg = _parse_args(sys.argv[1:])
         run_find_writer(_cfg['find_writer'], context=_cfg['context'])
+    elif '--watch-pc' in sys.argv:
+        _idx = sys.argv.index('--watch-pc')
+        _names = []
+        for _a in sys.argv[_idx + 1:]:
+            if _a.startswith('--'):
+                break
+            _names.append(_a)
+        run_watch_pc(_names)
     else:
         run()

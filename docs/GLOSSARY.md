@@ -35,22 +35,26 @@ Consonant with Aria: many Arias together form a Symphony.
 
 **Accord** *(English: agreement, convention)*
 A convention that an Aria can adopt. If an Aria links itself to an `ACCORD_RULE`,
-it signals that it follows that convention. At Shioreru (exit), ACCORD_CHECK verifies
+it signals that it follows that convention. At Wane (exit), ACCORD_CHECK verifies
 adopted accords and reports the count.
 
 ---
 
 ## Instructions
 
-**ITO** *(Latin: ito — "go", "step"; imperative of ire)*
+**NOVA** *(Latin: nova — "new"; fem. singular of novus)*
 An instruction Lux. One step of execution.
 Stored as: `[word, op, e1, e2, exit, next, pad, lumina...]`.
-The `op` field holds the address of an Aspect Lux, which determines what the ITO does.
+The `op` field holds the address of an Aspect Lux, which determines what the NOVA does.
 
 **Aspect**
-One of the 24 irreducible operations — the portable image of the hardware.
+One of the 25 irreducible *runtime* operations — the portable image of the hardware.
 Each Aspect maps directly to a CPU instruction or OS call.
-They are the only things in Reca that have fixed, built-in meaning.
+They are the only things in Reca that have fixed, built-in meaning at runtime.
+Loading a program (before it runs at all) has its own, separate set of
+irreducible operations for the same reason runtime does — `NEW`/`SET`/`LINK`
+are load-time Aspects: allocating a Lux can't be built out of operations
+that already assume a Lux exists. See `aspects.re` for the full account.
 
 **Voca** *(Latin: voca — "call"; imperative of vocare)*
 The call Aspect. Pushes the old `RA_LINK` onto the automatic call stack
@@ -79,16 +83,16 @@ it has no connection to the Yaku Aria.
 
 ## Lifecycle
 
-**Saku** *(Japanese: 咲く — to bloom, to flower; as in sakura)*
+**Wax** *(English: to grow, to increase — as the moon waxes)*
 The loader — reads source files, allocates luces, wires connections.
-`saku.re` implements the self-hosted loader. The words load/loader/loaded
-are not replaced; Saku is the name of the Aria, not the concept.
-After saku, the graph is one graph: no record remains of which file a Lumen came from.
+`wax.re` implements the self-hosted loader. The words load/loader/loaded
+are not replaced; Wax is the name of the Aria, not the concept.
+After wax, the graph is one graph: no record remains of which file a Lumen came from.
 
-**Shioreru** *(Japanese: 萎れる — to wither, to wilt)*
+**Wane** *(English: to shrink, to fade — as the moon wanes)*
 The teardown Aria — emits the execution summary (trace status, Accord count) at exit.
-`shioreru.re` is the conceptual counterpart to Saku: what blooms must also wilt.
-The words exit/report/teardown are not replaced; Shioreru is the name of the Aria.
+`wane.re` is the conceptual counterpart to Wax: what waxes must also wane.
+The words exit/report/teardown are not replaced; Wane is the name of the Aria.
 
 ---
 
@@ -99,7 +103,7 @@ The execution trace observer. `iris.re` is a pure observer — it never modifies
 the instruction graph. When `K_TRACE_POS` is nonzero, the interpreter writes
 `word(pc)` into the trace buffer on every step.
 
-**Phantom ITO**
+**Phantom NOVA**
 A Lux that was declared but never had its `op` slot wired.
 `op=0` → the interpreter halts on it. A common source of bugs.
 
@@ -110,9 +114,9 @@ A Lux that was declared but never had its `op` slot wired.
 The three ways `next_pc` is resolved after each Lux:
 
 **Line**
-`SLOT_NEXT == 0` → `next_pc = pc + ITO_SIZE`.
+`SLOT_NEXT == 0` → `next_pc = pc + NOVA_SIZE`.
 Sequential execution: no read, no branch, no overhead. The loader leaves
-`SLOT_NEXT` at zero for consecutive ITOs. The CPU prefetcher sees a linear
+`SLOT_NEXT` at zero for consecutive NOVAs. The CPU prefetcher sees a linear
 stream and loads ahead automatically. The dominant path in hot code.
 
 **Warp**
@@ -128,24 +132,24 @@ Foundation for future parallel fan-out via `Exire(clone)`. Rare in current code.
 
 ---
 
-## WAVE
+## NOVAE
 
-`WAVE label Op [El1=X] [El2=Y] [Exit=Z] [At=A] [Next=N] [Reset=1]`
+`NOVAE label Op [El1=X] [El2=Y] [Exit=Z] [At=A] [Next=N] [Reset=1]`
 
-Runtime ITO synthesizer. The mirror of `ITO` for dynamic (runtime) graph construction.
+Runtime NOVA synthesizer. The mirror of `NOVA` for dynamic (runtime) graph construction.
 
-**What it does:** Synthesizes a single ITO lux at runtime with the given fields. Expands to `__LT_ALLOC_ITO` + 5 Move nodes + `Voca WRITE_ITO_SLOTS`, all wired as static ITOs that execute during LOAD_MAIN.
+**What it does:** Synthesizes a single NOVA lux at runtime with the given fields. Expands to `__LT_ALLOC_NOVA` + 5 Move nodes + `Voca WRITE_NOVA_SLOTS`, all wired as static NOVAs that execute during LOAD_MAIN.
 
 **Parameters:**
-- `label` — name of the entry node (the `__LT_ALLOC_ITO` lux, or the `Move At→RA_MC_LUX` lux when `At=` is used)
-- `Op` — operation name (same as in `ITO`: `Move`, `Voca`, `Equal`, `Jump`, etc.)
-- `El1=X`, `El2=Y`, `Exit=Z` — ITO operands, all optional (default to `C_0`)
-- `At=A` — reuse existing lux at address A instead of allocating a new one (skips `__LT_ALLOC_ITO`); used when the lux is already allocated externally (e.g. `At=RA_MA0`)
-- `Next=N` — after WRITE_ITO_SLOTS, also wire the synthesized ITO's next-slot to N; eliminates manual `Add+Write` link pairs between WAVE calls
-- `Reset=1` — use `WRITE_ITO_SLOTS_RESET` instead of `WRITE_ITO_SLOTS`; resets `RA_MC_PREV` after linking (used for chain terminators)
+- `label` — name of the entry node (the `__LT_ALLOC_NOVA` lux, or the `Move At→RA_MC_LUX` lux when `At=` is used)
+- `Op` — operation name (same as in `NOVA`: `Move`, `Voca`, `Equal`, `Jump`, etc.)
+- `El1=X`, `El2=Y`, `Exit=Z` — NOVA operands, all optional (default to `C_0`)
+- `At=A` — reuse existing lux at address A instead of allocating a new one (skips `__LT_ALLOC_NOVA`); used when the lux is already allocated externally (e.g. `At=RA_MA0`)
+- `Next=N` — after WRITE_NOVA_SLOTS, also wire the synthesized NOVA's next-slot to N; eliminates manual `Add+Write` link pairs between NOVAE calls
+- `Reset=1` — use `WRITE_NOVA_SLOTS_RESET` instead of `WRITE_NOVA_SLOTS`; resets `RA_MC_PREV` after linking (used for chain terminators)
 
-**Replaces:** The old manual pattern of `__LT_ALLOC_ITO` + 4–5 `Move El1=X Exit=RA_MC_*` + `RVOCA WRITE_ITO_SLOTS`.
+**Replaces:** The old manual pattern of `__LT_ALLOC_NOVA` + 4–5 `Move El1=X Exit=RA_MC_*` + `RVOCA WRITE_NOVA_SLOTS`.
 
-**Used by:** RVOCA, RREDI, CLEAR, NOP, JEQ, JZ, LX, LH, WALK_ONE, LINK_OP, UNLINK_OP, LR, LT, WALK_ITO, ALLOC_TO, RCALL_AT, RCN_IMPL (partial).
+**Used by:** RVOCA, RREDI, CLEAR, NOP, JEQ, JZ, LX, LH, WALK_ONE, LINK_OP, UNLINK_OP, LR, LT, WALK_NOVA, ALLOC_TO, RCALL_AT, RCN_IMPL (partial).
 
 **Implemented in:** `loader.py` `_wave2_line` (preprocessor command, not a Reca macro).

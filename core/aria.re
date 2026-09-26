@@ -1,4 +1,5 @@
-//============================================================
+//
+============================================================
 aria.re — Aria relations for Reca
 
 An Aria is any program, library, or convention built on top of
@@ -33,19 +34,26 @@ Optional metadata. Useful for tooling and dependency analysis.
 any_lux --ARIA_VER--> ver_byte_chain_start
 
 Optional. NUL-terminated ASCII version string (byte chain).
-Not required by the protocol.//
+Not required by the protocol.
+//
 
 /── ARIA RELATIONS ────────────────────────────────────────────
 
 NEW ARIA_ENTRY
-//aria_lux --ARIA_ENTRY--> entry_lux
+//
+aria_lux --ARIA_ENTRY--> entry_lux
 Declares a public entry point of this Aria.
-Traverse ARIA_ENTRY lumina for discovery.//
+Traverse ARIA_ENTRY lumina for discovery.
+//
 
 NEW ARIA_DEP
-//aria_lux --ARIA_DEP--> other_aria_lux
-Declares a dependency on another Aria.//
+//
+aria_lux --ARIA_DEP--> other_aria_lux
+Declares a dependency on another Aria.
+//
 
 NEW ARIA_VER
-//any_lux --ARIA_VER--> ver_byte_chain_start
-Optional version string (NUL-terminated byte chain).//
+//
+any_lux --ARIA_VER--> ver_byte_chain_start
+Optional version string (NUL-terminated byte chain).
+//

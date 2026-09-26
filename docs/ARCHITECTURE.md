@@ -22,13 +22,13 @@ Wave-B in Python duplicates LOAD_MAIN and is gradually removed as it stabilises.
 
 | File | Role | After self-hosting |
 |------|------|--------------------|
-| `aspects.re` | 24 Aspects | Unchanged |
-| `constants.re` | SLOT_*, ITO_SIZE, C_N | Unchanged |
+| `aspects.re` | 25 Aspects | Unchanged |
+| `constants.re` | SLOT_*, NOVA_SIZE, C_N | Unchanged |
 | `registers.re` | RA_MA*, RA_LOAD_*, SC_* | Unchanged |
 | `lexer.re` | Tokenizer/byte I/O: BS_READ_TOKEN, BS_READ_BYTE, BS_SKIP_TO_EOL | **Permanent** — always needed |
 | `intern.re` | Interning/symbol table: BS_INTERN, BS_LOOKUP, BS_HTAB_000 | **Permanent** — always needed |
 | `macros.re` | Reca programs for commands (JEQ, JZ, CLEAR, RVOCA…) | **Permanent** |
-| `saku.re` | LOAD_MAIN: .re file loader | **Permanent** |
+| `wax.re` | LOAD_MAIN: .re file loader | **Permanent** |
 | `alloc.re` | ALLOC_LUX, ADD_LUMEN, REMOVE_LUMEN, K_CURSOR | Unchanged |
 | `htable.re` | HT_LOOKUP, HT_INSERT | Unchanged |
 | `symphony.re` | SR_WALK_ONE, SR_GLL/GLR/GLE/GLX | Unchanged |
@@ -55,7 +55,7 @@ carried over — LOAD_MAIN is the only loading path now.
 ## Loader
 
 **Python (loader.py) — permanent:**
-- `update_relations()`: registers SLOT_* and 24 Aspects into Python dispatch
+- `update_relations()`: registers SLOT_* and 25 Aspects into Python dispatch
 - `freeze()`: writes bin/sym to disk
 - Wave-A: address allocation for all names (needed before LOAD_MAIN runs)
 
@@ -63,12 +63,12 @@ carried over — LOAD_MAIN is the only loading path now.
 - `_setup_load_main()`: initialises htable, file list, K_CURSOR — used to run LOAD_MAIN in diagnostics
 
 **Python (loader.py) — scaffold, being removed:**
-- Wave-B: wires ITO/RVOCA/RREDI/LINK — duplicates LOAD_MAIN, kept as a safety net for now
+- Wave-B: wires NOVA/RVOCA/RREDI/LINK — duplicates LOAD_MAIN, kept as a safety net for now
 - `_wave_newref_line`: wires NEWREF/SETREF — LOAD_MAIN handles this itself
 
-**saku.re (LOAD_MAIN) — authoritative loader:**
+**wax.re (LOAD_MAIN) — authoritative loader:**
 - Wave 1: prepass — counts LINK lumina per source
-- Wave 2: load — builds the graph, allocates ITO luces of the right size
-- Commands: ITO, NEW, NEWREF, NEWSET, SETREF, LINK, BLOCK, RVOCA, RREDI, NOLINK
+- Wave 2: load — builds the graph, allocates NOVA luces of the right size
+- Commands: NOVA, NEW, NEWREF, NEWSET, SETREF, LINK, BLOCK, RVOCA, RREDI, NOLINK
 - Backfill for forward references
 - Macros: JEQ, JZ, CLEAR, NOP, FOR, SWITCH, SAVE via `{CMD}_MACRO` lookup

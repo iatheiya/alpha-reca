@@ -59,10 +59,10 @@ Indented lines are synthesised as `NEXO Aspect body` automatically by the loader
 
 **`NEXO Aspect body`** — append one RO-graph body line to an existing `Yaku_Aspect`.
 
-**`ITO Name Op [El1=X] [El2=Y] [Exit=Z]`** — create an instruction Lux.
-Auto-links sequential ITO luces via `Next` (slot 5) unless preceded by `NOLINK`.
+**`NOVA Name Op [El1=X] [El2=Y] [Exit=Z]`** — create an instruction Lux.
+Auto-links sequential NOVA luces via `Next` (slot 5) unless preceded by `NOLINK`.
 
-**`NOLINK`** — break the auto-Next chain. The following ITO gets no Next from the previous.
+**`NOLINK`** — break the auto-Next chain. The following NOVA gets no Next from the previous.
 
 ---
 
@@ -78,21 +78,29 @@ while pc != 0:
     execute(op, e1, e2, exit)
     raw = aether[pc + SLOT_NEXT]
     // Three paths (step / warp / flux):
-    if raw == 0:            pc = pc + ITO_SIZE   // step: sequential fall-through
+    if raw == 0:
+        pad = aether[pc + SLOT_PAD]
+        // step: no extra lumina → sequential fall-through, as always.
+        // Extra lumina present (pad != 0) → skip past them arithmetically
+        // (still sequential, never a jump) to the real next instruction.
+        pc = pc + NOVA_SIZE if pad == 0 else nova_extra_skip(pc + SLOT_PAD)
     elif raw < FLUX_BOTTOM: pc = raw             // warp: explicit address jump
     else:                   pc = exec_flux(raw)  // flux: structured parallel branch
 ```
 
-ITO lux layout (7 base slots + optional extra LINK lumina):
+NOVA lux layout (7 base slots, optionally carrying extra LINK lumina):
 ```
 slot 0: word  = self-ref (aether[addr] = addr)
 slot 1: op    = Aspect Lux address
 slot 2: e1    = first operand
 slot 3: e2    = second operand
 slot 4: exit  = result destination / jump target / RA_LINK addr for Voca
-slot 5: next  = 0 → step (pc + ITO_SIZE); non-zero → warp or flux target
-slot 6: pad   = 0  (terminates lumen scan before extra lumina)
-slot 7+:       extra LINK lumina: (rel, exit) pairs, 0-terminated
+slot 5: next  = 0 → step (pc + NOVA_SIZE, or past extras below); non-zero → warp or flux target
+slot 6: pad   = last slot of the base structure when there are no extra
+                lumina (0, as always). When there ARE extra lumina, this
+                same slot IS their first entry instead — (rel, exit) pairs,
+                0-terminated, starting right here (no separate always-empty
+                slot before them). Only consulted when slot 5 (next) is 0.
 ```
 
 Data lux layout:
@@ -101,13 +109,13 @@ slot 0: word  = value
 slot 1+:       lumen pairs (rel_addr, tgt_addr), 0-terminated
 ```
 
-Distinction: ITO has `op != 0` (slot 1); data lux has `op == 0`.
+Distinction: NOVA has `op != 0` (slot 1); data lux has `op == 0`.
 
 ---
 
-## The 24 Aspects
+## The 25 Aspects
 
-The 24 entries of `aspects.re` are the maximum universal set — operations natively
+The 25 entries of `aspects.re` are the maximum universal set — operations natively
 available on the vast majority of target CPUs. Each maps to one CPU instruction or
 a fixed OS escape. IDs are stable for the current Aria.
 
@@ -217,7 +225,7 @@ aether[3]          = K_TRACE_POS trace write pointer (0 = off)
 aether[4..N]       = Lux allocated by loader and runtime
 ```
 
-Allocation is a bump pointer (`K_CURSOR`). Each `NEW`/`BLOCK`/`ITO` advances it.
+Allocation is a bump pointer (`K_CURSOR`). Each `NEW`/`BLOCK`/`NOVA` advances it.
 No free list. Deactivation = losing connectivity (topology-based GC).
 
 ---

@@ -1,12 +1,15 @@
-# Generated at build time — do not commit
+# Build outputs -- all regenerated automatically
+# (python3 iris.py rebuilds reca.bin/reca.sym and regenerates generated/;
+#  python3 gen_compiler.py produces reca_init.ll)
 reca.bin
 reca.sym
+reca_init.ll
+generated/
 
-# Python cache
+# Local checkpoints
+*.zip
+
+# Python caches
 __pycache__/
 *.pyc
-*.pyo
-
-# Temporary files
-*.tmp
-*.bak
+.pytest_cache/

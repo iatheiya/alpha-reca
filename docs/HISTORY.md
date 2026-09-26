@@ -7,23 +7,23 @@ Does not duplicate current documentation — only what is behind us or fixed as 
 
 ## Renames
 
-### compiler.re → saku.re → yaku.re
-The file was first renamed from `compiler.re` (too conventional) to `saku.re`
-(the Saku concept — compilation rules). Then renamed again to `yaku.re` because
+### compiler.re → wax.re → yaku.re
+The file was first renamed from `compiler.re` (too conventional) to `wax.re`
+(the Wax concept — compilation rules). Then renamed again to `yaku.re` because
 Yaku is the actual system name used throughout the codebase (`Yaku_X` rules,
 `YAKU_NEXO` macros, etc.). Current filename: `yaku.re`.
 
-### loader.re → saku.re
-The self-hosted loader was named `loader.re` (conventional). Renamed to `saku.re`
-following the same logic as yaku.re: Saku is the name of the Aria (the loader),
+### loader.re → wax.re
+The self-hosted loader was named `loader.re` (conventional). Renamed to `wax.re`
+following the same logic as yaku.re: Wax is the name of the Aria (the loader),
 not a replacement for the words load/loader/loaded. Analogy: Yaku is the compiler
 Aria, not a replacement for compile/compiler/compiled.
 
-### exhale.re → shioreru.re
+### exhale.re → wane.re
 The exit report file was named `exhale.re` (inhale/exhale metaphor, now retired).
-Renamed to `shioreru.re` — the conceptual counterpart to Saku: what blooms must
+Renamed to `wane.re` — the conceptual counterpart to Wax: what blooms must
 also wilt. Inhale/exhale/bloom/withering terminology retired in favour of
-the cleaner Saku/Shioreru pair.
+the cleaner Wax/Wane pair.
 
 ### Phase/Pass/Sweep → Wave
 "Wave" describes a pass through the graph more naturally than "phase" or "pass".
@@ -36,22 +36,22 @@ the cleaner Saku/Shioreru pair.
 ### tgt → exit in lumen
 The lumen structure was described as `(rel, tgt)`. Symbols: `RA_LM_TGT`, `SR_LM_TGT`, `SR_GLT`.
 Now: `(rel, exit)`. Symbols: `RA_LM_EXIT`, `SR_LM_EXIT`, `SR_GLE`.
-A lumen exit is "where the connection leads" — the same concept as exit in ITO.
+A lumen exit is "where the connection leads" — the same concept as exit in NOVA.
 One term for one concept.
 
 ### OPUS_* → ARIA_* (in aria.re)
 Symbols renamed to match the concept. File was renamed to `aria.re` but symbols stayed `OPUS_*` — now corrected.
 
-### ITO — etymology
+### NOVA — etymology
 Previously called `INSTR` (instruction). Renamed because "step" expresses the
-essence more precisely: ITO is one step of execution.
+essence more precisely: NOVA is one step of execution.
 
 ---
 
 ## Removed Concepts
 
-### Rel-slots in ITO (Op_rel, El1_rel, El2_rel)
-Dead data — nobody read them. Removed. ITO layout became cleaner.
+### Rel-slots in NOVA (Op_rel, El1_rel, El2_rel)
+Dead data — nobody read them. Removed. NOVA layout became cleaner.
 
 ### CreateLux / Link / Unlink / LumenHead / LumenRel / LumenExit / LumenNext
 Removed as primitives. Replaced by `ALLOC_LUX`, `ADD_LUMEN`, `REMOVE_LUMEN`,

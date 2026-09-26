@@ -1,4 +1,4 @@
-# CHAIN modifier system — design proposal (NOITO unification)
+# CHAIN modifier system — design proposal (NONOVA unification)
 
 **Status: design only, not implemented.** Authored by the project owner
 through an iterative design conversation (2026-06-20/21); this document
@@ -6,14 +6,14 @@ consolidates the final agreed shape, to be implemented next.
 
 ## Motivation
 
-`NOITO` and `CHAIN` (`loader.py`, `mode == 'noito'` / `mode == 'chain'`)
+`NONOVA` and `CHAIN` (`loader.py`, `mode == 'nonova'` / `mode == 'chain'`)
 are near-duplicate preprocessor constructs. Verified directly against the
 code: both share the exact same name-resolution logic (`_parse_iris_mode`,
 `_auto_name`) and the exact same sub-item passthrough rule (`rel > 0` →
 raw, unchanged). They differ in exactly one respect — how `NOLINK` is
 emitted:
 
-- `NOITO`: every body item (`rel == 0`) gets its own `NOLINK` immediately
+- `NONOVA`: every body item (`rel == 0`) gets its own `NOLINK` immediately
   before it. No upfront `NOLINK` at the opener.
 - `CHAIN`: one `NOLINK` is emitted once, at the opener line. Items within
   the block are *not* individually `NOLINK`'d — they auto-link to each
@@ -22,24 +22,24 @@ emitted:
 Given how small and mechanical this difference is, and that the project
 already has a working precedent for "simple thing = parametrized special
 case of the general thing" (`FOR`'s anonymous count blocks, `ALLOC_LUX`
-as a fixed-count `ALLOC_TO`), `NOITO` is retired entirely and folded into
+as a fixed-count `ALLOC_TO`), `NONOVA` is retired entirely and folded into
 `CHAIN` as a modifier.
 
 ## Current behavior (for reference — what's being replaced)
 
-Both `NOITO` and `CHAIN` currently support the same three name-resolution
+Both `NONOVA` and `CHAIN` currently support the same three name-resolution
 forms via `_parse_iris_mode`:
 
 | Form | Generated item name |
 |------|---------------------|
-| `CHAIN` (no argument) | `ITO {first token of line} {rest}` — manual: author supplies the name as the first word of each body line |
-| `CHAIN NAME` | `ITO NAME_{idx} {op...}` (or `NAME_{suffix}_{idx}` if the line's first token starts with `_`) |
-| `CHAIN _` | `ITO __ch_{idx} {line}` — fully anonymous |
+| `CHAIN` (no argument) | `NOVA {first token of line} {rest}` — manual: author supplies the name as the first word of each body line |
+| `CHAIN NAME` | `NOVA NAME_{idx} {op...}` (or `NAME_{suffix}_{idx}` if the line's first token starts with `_`) |
+| `CHAIN _` | `NOVA __ch_{idx} {line}` — fully anonymous |
 
 Sub-items (any indentation deeper than the body level, `rel > 0`) are
-passed through completely unchanged — no `ITO`, no name, no `NOLINK`.
+passed through completely unchanged — no `NOVA`, no name, no `NOLINK`.
 This lets the author write arbitrary manual code at that depth, fully
-outside `CHAIN`/`NOITO`'s influence. Verified identical between `NOITO`
+outside `CHAIN`/`NONOVA`'s influence. Verified identical between `NONOVA`
 and `CHAIN` today; carries over unchanged in the new design.
 
 ## New syntax
@@ -56,13 +56,13 @@ today. Modifiers go after `|`, space-separated, **order-independent**.
 ### Modifiers identified so far
 
 - **`NOLINK`** — every generated item gets its own `NOLINK` (the old
-  `NOITO` behavior). Without this modifier, items auto-link to each
+  `NONOVA` behavior). Without this modifier, items auto-link to each
   other as `CHAIN` already does today.
 - **`ANON`** — generated items get anonymous naming (`__ch_{idx}`)
   regardless of whether a block name was given. See the `NAME | ANON`
   interaction below — this is *not* redundant with `CHAIN _`.
 
-Each prior `NOITO` call site becomes `CHAIN ... | NOLINK` (plus `ANON`
+Each prior `NONOVA` call site becomes `CHAIN ... | NOLINK` (plus `ANON`
 if the old call also used anonymous naming).
 
 ### Why `CHAIN NAME | ANON` is not the same as `CHAIN _`
@@ -101,7 +101,7 @@ that same block, one specific item may need to actually link to whatever
 came immediately before it — while still getting the block's normal
 auto-generated name (so it has to stay at the `rel == 0` auto-naming
 level, not drop to manual sub-indentation, which would lose the
-auto-naming sequence entirely and force writing the `ITO <name>` and
+auto-naming sequence entirely and force writing the `NOVA <name>` and
 linking logic out by hand). This is a real, previously-encountered gap:
 several `FOR` conversions earlier in this session needed exactly this
 kind of "keep the auto-generated identity, but make this one item behave
@@ -166,8 +166,8 @@ remain independent of each other*, no per-combination code is needed.
 
 ## Compatibility / migration
 
-- `NOITO` is retired entirely (per the author's decision). All 5 current
-  `NOITO` call sites (1 in `parser.re`, 4 in `yaku.re`) migrate to
+- `NONOVA` is retired entirely (per the author's decision). All 5 current
+  `NONOVA` call sites (1 in `parser.re`, 4 in `yaku.re`) migrate to
   `CHAIN ... | NOLINK`.
 - All 12 current `CHAIN` call sites keep working with zero syntax change
   (no `|` present → no modifiers → identical behavior to today), *except*

@@ -35,7 +35,7 @@
 /RA_SEL_A.word    = value if condition is true/
 /RA_SEL_B.word    = value if condition is false/
 /RA_SEL_OUT.word  = result after return/
-/RA_SEL_RET.word  = return Lux ID (set via SETREF before jump)/
+/RA_SEL_RET.word  = return Lux ID (set via SEAL before jump)/
 
 /DEPENDENCY: aspects.re, core/constants.re, target/aarch64.re (TGTCAP_SELECT)/
 
@@ -50,16 +50,16 @@ NEW Select
 
 /── Subroutine registers ──────────────────────────────────────/
 NEW RA_SEL_COND  /input: condition (0=false, nonzero=true)/
-NEW RA_SEL_A     /input: value if condition is true/
-NEW RA_SEL_B     /input: value if condition is false/
-NEW RA_SEL_OUT   /output: selected value/
-NEW RA_SEL_RET   /return Lux ID/
+NEW RA_SEL_A  /input: value if condition is true/
+NEW RA_SEL_B  /input: value if condition is false/
+NEW RA_SEL_OUT  /output: selected value/
+NEW RA_SEL_RET  /return Lux ID/
 
 /── SEL_OP: software implementation (fallback for TGTCAP_SELECT=0) ───/
 /cond? A : B  using JumpIf/
 /On TGTCAP_SELECT=1 targets, yaku.re replaces this with CSEL/CMOV./
-ITO SEL_OP   JumpIf  El1=RA_SEL_COND  Exit=SEL_TRUE
-ITO SEL_B    Move   El1=RA_SEL_B     Exit=RA_SEL_OUT
-ITO SEL_RB   JumpReg El1=RA_SEL_RET
-ITO SEL_TRUE Move   El1=RA_SEL_A     Exit=RA_SEL_OUT
-ITO SEL_RA   JumpReg El1=RA_SEL_RET
+NOVA SEL_OP Op=JumpIf El1=RA_SEL_COND Exit=SEL_TRUE
+NOVA SEL_B Op=Move El1=RA_SEL_B Exit=RA_SEL_OUT
+NOVA SEL_RB Op=JumpReg El1=RA_SEL_RET
+NOVA SEL_TRUE Op=Move El1=RA_SEL_A Exit=RA_SEL_OUT
+NOVA SEL_RA Op=JumpReg El1=RA_SEL_RET

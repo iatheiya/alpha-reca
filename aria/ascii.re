@@ -1,140 +1,161 @@
-//============================================================
-//aria/ascii.re — ASCII character constants
+//
+============================================================
+//
 
-//Reca stores characters as i64 (low 8 bits = the byte).
+//
+Reca stores characters as i64 (low 8 bits = the byte).
 SYS_WRITE reads the low byte of each Lux word.
 These constants give human names to the values used in
 yaku.re and other Reca programs.
 
 The LC_* prefix has been removed. Names are canonical.
-All values are standard 7-bit ASCII (0–127).//
+All values are standard 7-bit ASCII (0–127).
+//
 
 ── Control characters ────────────────────────────────────────
-NEWSET NUL 0             /null terminator — marks end of byte chains
+SET NUL Value=0 /null terminator — marks end of byte chains
 
-NEWSET TAB 9             /horizontal tab
+SET TAB Value=9 /horizontal tab
 
-NEWSET LF 10             /line feed / newline
+SET LF Value=10 /line feed / newline
 
-NEWSET CR 13             /carriage return/
+SET CR Value=13 /carriage return/
 
-NEWSET ESC 27            /escape/
+SET ESC Value=27 /escape/
 
-NEWSET SP 32             /space/
+SET SP Value=32 /space/
 
-NEWSET DEL 127           /delete/
+SET DEL Value=127 /delete/
 
 ── Punctuation ───────────────────────────────────────────────
-NEWSET MINUS 45          /-/
+SET MINUS Value=45 /-/
 
-NEWSET PERCENT 37        /% — used in LLVM IR (%vreg, %label)/
+SET PERCENT Value=37 /% — used in LLVM IR (%vreg, %label)/
 
-NEWSET DQUOTE 34         /double-quote char (34)/
+SET DQUOTE Value=34 /double-quote char (34)/
 
-NEWSET HASH 35           /#/
+SET HASH Value=35 /#/
 
 
-NEWSET SLASH 47          ///
+SET SLASH Value=47    ///
 
-NEWSET COLON 58          /:/
+SET COLON Value=58 /:/
 
-NEWSET SEMICOLON 59      /;/
+SET SEMICOLON Value=59 /;/
 
-NEWSET EQUALS 61         /=/
+SET EQUALS Value=61 /=/
 
-NEWSET BACKSLASH 92      /backslash char (92)/
+SET GREATER Value=62 /> -- FOR's own override-selector separator/
 
-NEWSET UNDERSCORE 95     /_/
-NEWSET ASCII_PIPE 124    /|/
+SET BACKSLASH Value=92 /backslash char (92)/
 
-NEWSET QMARK 63          /?/
+SET UNDERSCORE Value=95 /_/
+SET ASCII_PIPE Value=124 /|/
 
-NEWSET LBRACE 123        /{ — used in LLVM IR function bodies/
+SET QMARK Value=63 /?/
 
-NEWSET RBRACE 125        /} — used in LLVM IR function bodies/
+SET LBRACE Value=123 /{ — used in LLVM IR function bodies/
 
-NEWSET TILDE 126         /~ (tilde char; was used as newline placeholder in templates, now replaced by automatic RO_NEWLINE)
+SET RBRACE Value=125 /} — used in LLVM IR function bodies/
+
+SET TILDE Value=126 /~ (tilde char; was used as newline placeholder in templates, now replaced by automatic LF emission (see PGB_EMIT_LF, parser.re))
 
 /── Digits ───────────────────────────────────────────────────/
-NEWSET ASCII_0 48        /'0'  (C_48 in compiler = ASCII_0)/
+SET ASCII_0 Value=48 /'0'  (C_48 in compiler = ASCII_0)/
 
-NEWSET ASCII_9 57        /'9'/
+SET ASCII_9 Value=57 /'9'/
 
 /── Uppercase letters ─────────────────────────────────────────/
-NEWSET ASCII_A 65        /'A'/
+SET ASCII_A Value=65 /'A'/
 
-NEWSET ASCII_L 76        /'L' — used as LLVM label prefix/
+SET ASCII_L Value=76 /'L' — used as LLVM label prefix/
 
-NEWSET ASCII_Z 90        /'Z'/
+SET ASCII_Z Value=90 /'Z'/
 
 /── Lowercase letters ─────────────────────────────────────────/
-NEWSET ASCII_a 97        /'a'/
+SET ASCII_a Value=97 /'a'/
 
-NEWSET ASCII_z 122       /'z'/
+SET ASCII_z Value=122 /'z'/
 
 /── Case conversion ───────────────────────────────────────────/
-NEWSET CASE_DELTA 32     /add to uppercase → lowercase/
+SET CASE_DELTA Value=32 /add to uppercase → lowercase/
 
-NEWSET DOT 46            /./
+SET DOT Value=46 /./
 
 /── Additional uppercase letters (for parser.re command dispatch) ──/
-NEWSET ASCII_B 66
+SET ASCII_B Value=66
 
-NEWSET ASCII_D 68
+SET ASCII_D Value=68
 
-NEWSET ASCII_F 70
+SET ASCII_F Value=70
 
-NEWSET ASCII_I 73
+SET ASCII_I Value=73
 
-NEWSET ASCII_N 78
+SET ASCII_N Value=78
 
-NEWSET ASCII_O 79
+SET ASCII_O Value=79
 
-NEWSET ASCII_Q 81
+SET ASCII_Q Value=81
 
-NEWSET ASCII_R 82
+SET ASCII_R Value=82
 
-NEWSET ASCII_S 83
+SET ASCII_S Value=83
 
-NEWSET ASCII_V 86
+SET ASCII_V Value=86
 
-NEWSET ASCII_C 67
+SET ASCII_C Value=67
 
-NEWSET ASCII_E 69
+SET ASCII_E Value=69
 
-NEWSET ASCII_G 71
+SET ASCII_G Value=71
 
-NEWSET ASCII_H 72
+SET ASCII_H Value=72
 
-NEWSET ASCII_J 74
+SET ASCII_J Value=74
 
-NEWSET ASCII_K 75
+SET ASCII_K Value=75
 
-NEWSET ASCII_M 77
+SET ASCII_M Value=77
 
-NEWSET ASCII_P 80
+SET ASCII_P Value=80
 
-NEWSET ASCII_T 84
+SET ASCII_T Value=84
 
-NEWSET ASCII_U 85
+SET ASCII_U Value=85
 
-NEWSET ASCII_W 87
+SET ASCII_W Value=87
 
-NEWSET ASCII_X 88
+SET ASCII_X Value=88
 
 /── Lowercase letters (suffix 'l' = lowercase) ────────────────/
-NEWSET ASCII_cl 99      /'c'/
-NEWSET ASCII_dl 100     /'d'/
-NEWSET ASCII_fl 102     /'f'/
-NEWSET ASCII_hl 104     /'h'/
-NEWSET ASCII_il 105     /'i'/
-NEWSET ASCII_ll 108     /'l'/
-NEWSET ASCII_nl 110     /'n'/
-NEWSET ASCII_pl 112     /'p'/
-NEWSET ASCII_rl 114     /'r'/
-NEWSET ASCII_tl 116     /'t'/
-NEWSET ASCII_vl 118     /'v'/
-NEWSET ASCII_xl 120     /'x'/
+/ASCII_al/ASCII_zl added for consistency with every other lowercase
+/letter here -- ASCII_a/ASCII_z (above, bare names) predate this
+/suffix convention and stay for their existing arithmetic callers
+/(parser.re's escape-sequence decode uses ASCII_a as a base value,
+/not as a letter-identity check); they were never a deliberate
+/"a/z are the exception" rule, just two names that already existed
+/before the l-suffix convention was adopted for the rest. New code
+/(MATCH-generated byte comparisons included) should use ASCII_al/
+/ASCII_zl like every other letter, not the bare a/z pair.
+SET ASCII_al Value=97 /'a'/
+SET ASCII_cl Value=99 /'c'/
+SET ASCII_dl Value=100 /'d'/
+SET ASCII_el Value=101 /'e'/
+SET ASCII_fl Value=102 /'f'/
+SET ASCII_hl Value=104 /'h'/
+SET ASCII_il Value=105 /'i'/
+SET ASCII_ll Value=108 /'l'/
+SET ASCII_nl Value=110 /'n'/
+SET ASCII_pl Value=112 /'p'/
+SET ASCII_rl Value=114 /'r'/
+SET ASCII_sl Value=115 /'s'/
+SET ASCII_tl Value=116 /'t'/
+SET ASCII_vl Value=118 /'v'/
+SET ASCII_wl Value=119 /'w'/
+SET ASCII_xl Value=120 /'x'/
+SET ASCII_zl Value=122 /'z'/
 
 /── Single digit ASCII values ──────────────────────────────────/
-NEWSET ASCII_1 49       /'1'/
+SET ASCII_1 Value=49 /'1'/
+SET ASCII_2 Value=50 /'2'/
+SET ASCII_3 Value=51 /'3'/

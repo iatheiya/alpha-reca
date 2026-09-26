@@ -1,4 +1,5 @@
-//target/aarch64.re — Target capabilities for lowering on AArch64
+//
+target/aarch64.re — Target capabilities for lowering on AArch64
 
 LAYER: target descriptor — what the CPU can do natively.
 Used by the compiler's lowering layer to choose between:
@@ -26,12 +27,13 @@ This is the opt layer (Select is NOT in aspects.re).
 DEPENDENCY: aspects.re
 
 ── Lowering capabilities ─────────────────────────────────────
-1 = hardware instruction available, 0 = software fallback needed//
+1 = hardware instruction available, 0 = software fallback needed
+//
 
-NEWSET TGTCAP_SELECT 1    /CSEL available — branchless select supported
+SET TGTCAP_SELECT Value=1 /CSEL available — branchless select supported
 
-NEWSET TGTCAP_HW_DIV 1    /SDIV/UDIV available natively
+SET TGTCAP_HW_DIV Value=1 /SDIV/UDIV available natively
 
-NEWSET TGTCAP_HW_MUL 1    /MUL available natively
+SET TGTCAP_HW_MUL Value=1 /MUL available natively
 
-NEWSET TGTCAP_HW_SHIFT 1  /barrel shifter for variable shifts
+SET TGTCAP_HW_SHIFT Value=1 /barrel shifter for variable shifts

@@ -19,16 +19,16 @@ NEW X
 SET X 7
 
 NOLINK
-ITO DOUBLE   Add El1=X El2=X Exit=RA_TMP
+NOVA DOUBLE   Add El1=X El2=X Exit=RA_TMP
 RREDI DOUBLE_r
 
 NOLINK
-ITO MAIN     Move El1=C_0 Exit=RA_TMP
+NOVA MAIN     Move El1=C_0 Exit=RA_TMP
 RVOCA MAIN_CALL DOUBLE
-ITO MAIN_END End
+NOVA MAIN_END End
 ```
 
-`X` is a Data Lux whose value is 7. `DOUBLE` is an ITO Lux that adds
+`X` is a Data Lux whose value is 7. `DOUBLE` is a NOVA Lux that adds
 `X` to itself, writing into `RA_TMP`, then returns via `Redi`. `MAIN`
 calls `DOUBLE` via `Voca` — which saves the return address and jumps.
 After execution, `RA_TMP` holds 14.
@@ -62,8 +62,9 @@ absence of what isn't needed.
 ## Quick Start
 
 ```bash
-python3 loader.py             # build reca.bin
-python3 repl.py --run example.re  # run file
+python3 loader.py             # build reca.bin / reca.sym
+python3 tools/iris.py         # build health, Pass2, lint
+python3 tools/iris.py --list  # every diagnostic command
 ```
 
 Full reference: `docs/TOOLING.md`
@@ -72,7 +73,7 @@ Full reference: `docs/TOOLING.md`
 
 | File | Contents |
 |------|----------|
-| `docs/LANGUAGE.md` | Syntax, 24 Aspects, execution model |
+| `docs/LANGUAGE.md` | Syntax, 25 Aspects, execution model |
 | `docs/ARCHITECTURE.md` | System architecture, pipeline, key files |
 | `docs/CONVENTIONS.md` | Naming, calling convention, code style |
 | `docs/REFERENCE.md` | All macros and registers |
@@ -82,7 +83,6 @@ Full reference: `docs/TOOLING.md`
 
 ## Status
 
-Self-hosting was reached, then lost during architecture changes.
-The current goal is restoring it on the new foundation.
+The current goal is self-hosting: Reca building itself.
 
 The bootstrap layer is written in Python. It is being replaced by Reca.

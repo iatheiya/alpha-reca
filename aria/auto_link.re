@@ -1,7 +1,8 @@
 ============================================================
-//aria/auto_link.re — Mark loader-injected Next links
+//
+aria/auto_link.re — Mark loader-injected Next links
 
-CANON: When the loader sees consecutive ITO/RVOCA/JEQ/JZ/...
+CANON: When the loader sees consecutive NOVA/RVOCA/JEQ/JZ/...
 lines, it wires `prev.Next = curr` automatically — this is the
 "auto-Next" convenience that lets sequential code be written
 without explicit Next= on every line. It is convenient but
@@ -15,10 +16,11 @@ This aria closes that gap. When loaded, it provides the
 adds an `AutoNext` lumen alongside every text-injected Next
 "link" it creates.
 
-prev --Next--> curr     // interpreter contract (slot 5)
-prev --AutoNext--> curr // marker: loader-injected
+prev --Next--> curr
+prev --AutoNext--> curr
+marker: loader-injected
 
-Author-declared Next links (e.g. `ITO FOO Move Next=BAR`,
+Author-declared Next links (e.g. `NOVA FOO Move Next=BAR`,
 or the internal links inside macros like RVOCA/JEQ/JZ) get
 only the slot 5 wiring, NO AutoNext lumen — they are real
 graph structure, not adjacency artifacts.
@@ -43,12 +45,13 @@ work; only the annotation is missing.
 
 PHILOSOPHY:
 
-The canon does not throw information away (see inscription.re).
+The canon does not throw information away.
 AutoNext is the same principle applied to control flow: the
 reason a Next lumen exists (intent vs convenience) is itself
 information, and Reca preserves it.
 
 PROVIDES: AutoNext
-DEPENDENCY: aspects.re//
+DEPENDENCY: aspects.re
+//
 
-NEWREF AutoNext
+SET AutoNext

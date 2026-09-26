@@ -1,4 +1,5 @@
-//constants.re — Common integer constants and lux layout offsets
+//
+constants.re — Common integer constants and lux layout offsets
 
 ── Lux model ────────────────────────────────────────────────────────────────
 
@@ -8,107 +9,146 @@ Lumen = addr  — one connection (positions 1..n of a data lux)
 Data lux:       [word, rel0, exit0, rel1, exit1, ..., 0]
 word at pos 0, lumen pairs from pos 1 onward, 0-terminated.
 
-"ITO" lux (compact fixed-slot layout, 7 physical luces):
+"NOVA" lux (compact fixed-slot layout, 7 physical luces):
 pos 0 = word  = self-ref (aether[addr] = addr)
 pos 1 = op    = primitive addr (SLOT_OP)
 pos 2 = e1    = first operand   (SLOT_E1)
 pos 3 = e2    = second operand  (SLOT_E2)
 pos 4 = exit  = exit/dest addr  (SLOT_EXIT)
-pos 5 = next  = 0 → implicit fall-through (pc+ITO_SIZE); !0 → explicit graph link (SLOT_NEXT)
+pos 5 = next  = 0 → implicit fall-through (pc+NOVA_SIZE); !0 → explicit graph link (SLOT_NEXT)
 pos 6 = pad   = 0 (terminates lumen scan before extra lumens)
 pos 7+= extra LINK lumens: (rel, exit) pairs, 0-terminated
 
-DEPENDENCY: aspects.re//
+DEPENDENCY: aspects.re
+//
 
 ── Pure numeric constants ────────────────────────────────────────────────────
 
-NEWSET C_0 0
+SET C_0 Value=0
 
-NEWSET C_1 1
+SET C_1 Value=1
 
-NEWSET C_2 2
+SET C_2 Value=2
 
-NEWSET C_3 3
+SET C_3 Value=3
 
-NEWSET C_4 4
+SET C_4 Value=4
 
-NEWSET C_5 5
+SET C_5 Value=5
 
-NEWSET C_6 6
+SET C_6 Value=6
 
-NEWSET C_7 7
+SET C_7 Value=7
 
-NEWSET C_8 8
+SET C_8 Value=8
 
-NEWSET C_9 9
+SET C_9 Value=9
 
-NEWSET C_10 10
-NEWSET C_11 11
-NEWSET C_12 12
-NEWSET C_13 13
-NEWSET C_14 14
-NEWSET C_15 15
-NEWSET C_16 16
-NEWSET C_17 17
-NEWSET C_18 18
-NEWSET C_19 19
+SET C_10 Value=10
+SET C_11 Value=11
+SET C_12 Value=12
+SET C_13 Value=13
+SET C_14 Value=14
+SET C_15 Value=15
+SET C_16 Value=16
+SET C_17 Value=17
+SET C_18 Value=18
+SET C_19 Value=19
 
-NEWREF C_7_REF C_7    /word = addr(C_7); for WAVE El1= when value 7 is needed. Placed after the C_N sequence so it doesn't break the addr(C_N) = addr(C_0) + 2*N formula./
+/C_7_REF formerly declared here -- removed once NOVAE gained its own
+/Op1=/Op2=/Op3=Idem operand-resolution mode (El1=C_7 Op1=Idem now used
+/directly at the one real call site). See BUGS.md Pattern Z,
+/REF_TO_IDEM.md.
 
-NEWSET C_32 32
+SET C_32 Value=32
 
-NEWSET C_33 33
-
-
-NEWSET C_48 48
-
-NEWSET C_63 63
-
-NEWSET C_64 64
-
-NEWSET C_100 100
+SET C_33 Value=33
 
 
-NEWSET C_255 255
+SET C_48 Value=48
 
-NEWSET C_256 256
+SET C_63 Value=63
 
-NEWSET C_512 512
+SET C_64 Value=64
 
-NEWSET C_1024 1024
+SET C_100 Value=100
 
-//removed unused: C_2048//
 
-NEWSET C_5381 5381
+SET C_255 Value=255
 
-NEWSET C_NEG1 -1
+SET C_256 Value=256
 
-── ITO lux slot offsets ─────────────────────────────────────────────────────
-//Offsets from the ITO lux base address to each fixed slot.
-These match symphony.py SLOT_* constants (single source of truth: symphony.py).//
+SET C_512 Value=512
 
-NEWSET SLOT_OP  1      /op primitive addr (dispatch key)
+SET C_1024 Value=1024
 
-NEWSET SLOT_E1  2      /first operand addr
+//
+removed unused: C_2048
+//
 
-NEWSET SLOT_E2  3      /second operand addr
+SET C_5381 Value=5381
 
-NEWSET SLOT_EXIT 4     /exit addr (store target, jump target, RA_LINK addr for Voca)
+SET C_NEG1 Value=-1
 
-NEWSET SLOT_NEXT 5     /next ITO: 0 = implicit fall-through (pc+ITO_SIZE), !0 = explicit graph link
+── NOVA lux slot offsets ─────────────────────────────────────────────────────
+//
+Offsets from the NOVA lux base address to each fixed slot.
+These match aether.py SLOT_* constants (single source of truth: aether.py).
+//
 
-//ITO base size: word+op+e1+e2+exit+next+pad = 7 luces.
-Extra LINK lumens (from LINK commands) start at slot 7 (ITO_SIZE).//
-NEWSET ITO_SIZE 7
+SET SLOT_OP Value=1 /op primitive addr (dispatch key)
 
-//── Flux slot type codes ────────────────────────────────────────────────
-//Used in type lux (Data Lux) to describe flux structure.
-//Type lux = [word, code1, code2, ..., 0] — sequence of codes, 0-terminated.
-//Codes describe what occupies each slot of the flux, in order.
-//Next (code 6) may repeat N times → N continuation points (fan-out).//
-NEWSET FLUX_SLOT_OP    2   /op (dispatch primitive)
-NEWSET FLUX_SLOT_E1    3   /first element operand
-NEWSET FLUX_SLOT_E2    4   /second element operand
-NEWSET FLUX_SLOT_EXIT  5   /exit / destination
-NEWSET FLUX_SLOT_NEXT  6   /next continuation point (may repeat)
-NEWSET FLUX_SLOT_REL   7   /relation (lumen rel)
+SET SLOT_E1 Value=2 /first operand addr
+
+SET SLOT_E2 Value=3 /second operand addr
+
+SET SLOT_EXIT Value=4 /exit addr (store target, jump target, RA_LINK addr for Voca)
+
+SET SLOT_NEXT Value=5 /next NOVA: 0 = implicit fall-through (pc+NOVA_SIZE), !0 = explicit graph link
+
+//
+SLOT_PAD doubles as the extras signal: 0 (as always) = no extra
+lumens, ordinary +NOVA_SIZE fall-through, unchanged and free. Non-zero
+= extra LINK lumens start right AT this slot (not after it) -- the
+same self-describing (rel, target) pairs a Data lux already uses,
+0-terminated. Only checked when SLOT_NEXT==0 (the ordinary/sequential
+case); an explicit SLOT_NEXT (warp/flux) is unrelated and unaffected.
+See interpreter.py's _nova_extra_skip for the reference scan.
+//
+SET SLOT_PAD Value=6 /0 = no extras (as before); !=0 = extras start here
+
+//
+NOVA base Op=size: word+op+e1+e2+exit+next+pad = 7 luces.
+//
+SET NOVA_SIZE Value=7
+
+//
+── Flux slot type codes ────────────────────────────────────────────────
+//
+//
+Flux = [descriptor, val1, val2, ..., 0] — one lux, no separate type lux.
+descriptor is a sequence of 4-bit digits (nibbles), unpacked from the
+least-significant nibble upward, 0-terminated. A plain digit (1-7 below)
+consumes exactly one value, in order. FLUX_GROUP/FLUX_PIVOT (14/13)
+mark a group -- "FLUX_GROUP code(s)... FLUX_PIVOT count FLUX_GROUP" --
+always written in pairs (never omitted, even at digit 0: omitting the
+opener makes every later FLUX_GROUP ambiguous between opening a new
+group and closing the implicit one that silently started at 0, since
+occurrence parity is the only thing that tells them apart). One code
+before the pivot + count N after = "one-to-many" (that code gets N
+separate values). Several codes before the pivot + count N after =
+"many-to-one" (those codes share the same N value(s), N=1 in the
+common case). See interpreter.py's _exec_flux for the reference decode.
+//
+//
+Next (code 6) may repeat (plain, or via a one-to-many group) →
+N continuation points (fan-out).
+//
+SET FLUX_SLOT_OP Value=2 /op (dispatch primitive)
+SET FLUX_SLOT_E1 Value=3 /first element operand
+SET FLUX_SLOT_E2 Value=4 /second element operand
+SET FLUX_SLOT_EXIT Value=5 /exit / destination
+SET FLUX_SLOT_NEXT Value=6 /next continuation point (may repeat)
+SET FLUX_SLOT_REL Value=7 /relation (lumen rel)
+SET FLUX_PIVOT Value=13 /inside a group: separates code(s) from count
+SET FLUX_GROUP Value=14 /group boundary, always paired (open/close)

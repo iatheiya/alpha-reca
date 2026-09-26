@@ -5,11 +5,11 @@
 ## Part I — Load-time Macros
 
 Load-time macros are Reca programs in `macros.re` that the loader executes during Wave-B
-instead of a Python inline handler. Every `.re` command except the primitives (`NEW`, `SET`, `ITO`…)
+instead of a Python inline handler. Every `.re` command except the primitives (`NEW`, `SET`, `NOVA`…)
 is dispatched to the corresponding macro entry point.
 
 **How it works:** the loader writes resolved token addresses into `RA_MA0..RA_MA7`,
-then calls the macro via `Voca`. The macro builds ITO luces directly in Aether.
+then calls the macro via `Voca`. The macro builds NOVA luces directly in Aether.
 
 ---
 
@@ -17,25 +17,25 @@ then calls the macro via `Voca`. The macro builds ITO luces directly in Aether.
 
 #### `RVOCA name sub`
 ```
-→ ITO name Voca El1=sub Exit=RA_LINK
+→ NOVA name Voca El1=sub Exit=RA_LINK
 ```
 Build a Voca lux. `name` = label, `sub` = called subroutine.
 
 #### `RREDI name`
 ```
-→ ITO name Redi El1=RA_LINK
+→ NOVA name Redi El1=RA_LINK
 ```
-Build a Redi lux (return). Resets `_last_ito` = 0 (chain terminator).
+Build a Redi lux (return). Resets `_last_nova` = 0 (chain terminator).
 
 #### `CLEAR name target`
 ```
-→ ITO name Move El1=C_0 Exit=target
+→ NOVA name Move El1=C_0 Exit=target
 ```
 Zero out `target`.
 
 #### `NOP name`
 ```
-→ ITO name Move El1=C_0 Exit=C_0
+→ NOVA name Move El1=C_0 Exit=C_0
 ```
 No-op lux. Used as placeholder or `_K` lux in JEQ.
 
@@ -45,17 +45,17 @@ No-op lux. Used as placeholder or `_K` lux in JEQ.
 
 #### `JEQ name a b dest`
 ```
-→ ITO name   Equal   El1=a   El2=b   Exit=RA_JEQ_FLAG
-  ITO name_J JumpIf  El1=RA_JEQ_FLAG Exit=dest
-  ITO name_K Move    El1=C_0         Exit=C_0
+→ NOVA name   Equal   El1=a   El2=b   Exit=RA_JEQ_FLAG
+  NOVA name_J JumpIf  El1=RA_JEQ_FLAG Exit=dest
+  NOVA name_K Move    El1=C_0         Exit=C_0
 ```
 Three luces. Jumps to `dest` if `a == b`. Auto-suffix: MA4=`_J`, MA5=`_K`.
 
 #### `JZ name cond dest`
 ```
-→ ITO name   Equal   El1=cond El2=C_0  Exit=RA_JEQ_FLAG
-  ITO name_J JumpIf  El1=RA_JEQ_FLAG   Exit=dest
-  ITO name_K Move    El1=C_0           Exit=C_0
+→ NOVA name   Equal   El1=cond El2=C_0  Exit=RA_JEQ_FLAG
+  NOVA name_J JumpIf  El1=RA_JEQ_FLAG   Exit=dest
+  NOVA name_K Move    El1=C_0           Exit=C_0
 ```
 Jumps to `dest` if `cond == 0`. Auto-suffix: MA3=`_J`, MA4=`_K`.
 
@@ -70,9 +70,9 @@ RA_LINK is saved/restored automatically by the call stack on every
 ```
 NEWREF name body_start
 NOLINK
-ITO body_start ...   /first real instruction, becomes the entry point/
+NOVA body_start ...   /first real instruction, becomes the entry point/
 ...
-RREDI name_ret       /→ ITO name_ret Redi El1=RA_LINK/
+RREDI name_ret       /→ NOVA name_ret Redi El1=RA_LINK/
 ```
 No special entry/exit macro is needed; nested and recursive calls work
 correctly at any depth via `RA_SP`.
@@ -88,10 +88,10 @@ The automatic call stack (`RA_SP`, pushed/popped by every `Voca`/`Redi`, see
 
 #### `RCALL_AT name sub landing`
 ```
-→ ITO name   Move landing → RA_LINK
-  ITO name_J Jump Exit=sub
+→ NOVA name   Move landing → RA_LINK
+  NOVA name_J Jump Exit=sub
 ```
-Call with explicit landing (resets `_last_ito` = 0).
+Call with explicit landing (resets `_last_nova` = 0).
 
 **KNOWN BUG (see BUGS.md "LOAD_CU_BUILDER dispatch path is dead code"):**
 `name` currently comes out as `op=0` (unwired/"phantom") at every call site —
@@ -104,10 +104,10 @@ RCALL_AT-based code paths as non-functional until this is fixed.
 
 #### `LINK_OP name src rel exit`
 ```
-→ ITO name   Move src  → RA_LM_SRC
-  ITO name_R Move rel  → RA_LM_REL
-  ITO name_T Move exit → RA_LM_EXIT
-  ITO name_J Voca ADD_LUMEN Exit=RA_LINK
+→ NOVA name   Move src  → RA_LM_SRC
+  NOVA name_R Move rel  → RA_LM_REL
+  NOVA name_T Move exit → RA_LM_EXIT
+  NOVA name_J Voca ADD_LUMEN Exit=RA_LINK
 ```
 Adds lumen `src --rel--> exit`. 4 luces. Auto-suffix: MA4=`_R`, MA5=`_T`, MA6=`_J`.
 
@@ -117,36 +117,36 @@ Adds lumen `src --rel--> exit`. 4 luces. Auto-suffix: MA4=`_R`, MA5=`_T`, MA6=`_
 
 #### `WALK_ONE name lux rel`
 ```
-→ ITO name_LUX Move lux → RA_SR_LUX
-  ITO name_REL Move rel → RA_SR_REL
-  ITO name_OFF Move C_1 → RA_SR_OFFSET
-  ITO name     Voca SR_WALK_ONE Exit=RA_LINK
+→ NOVA name_LUX Move lux → RA_SR_LUX
+  NOVA name_REL Move rel → RA_SR_REL
+  NOVA name_OFF Move C_1 → RA_SR_OFFSET
+  NOVA name     Voca SR_WALK_ONE Exit=RA_LINK
 ```
 Finds first lumen with `rel` at `lux`. Result in `RA_SR_OUT`.
 Auto-suffix: MA3=`_LUX`, MA4=`_REL`, MA5=`_OFF`.
 
 #### `LX name src exit_lux`
 ```
-→ ITO name   Move src → RA_SR_LUMEN
-  ITO name_J Voca SR_GLX Exit=RA_LINK
-  ITO name_W Move RA_SR_LUMEN → exit_lux
+→ NOVA name   Move src → RA_SR_LUMEN
+  NOVA name_J Voca SR_GLX Exit=RA_LINK
+  NOVA name_W Move RA_SR_LUMEN → exit_lux
 ```
 Advance to next lumen. Auto-suffix: MA3=`_J`, MA4=`_W`.
 
 #### `LH name src exit_lux`
 ```
-→ ITO name_OFF Move C_1 → RA_SR_OFFSET
-  ITO name     Move src → RA_SR_LUX
-  ITO name_J   Voca SR_GLL Exit=RA_LINK
-  ITO name_W   Move RA_SR_LUMEN → exit_lux
+→ NOVA name_OFF Move C_1 → RA_SR_OFFSET
+  NOVA name     Move src → RA_SR_LUX
+  NOVA name_J   Voca SR_GLL Exit=RA_LINK
+  NOVA name_W   Move RA_SR_LUMEN → exit_lux
 ```
 Read head (first lumen). Auto-suffix: MA3=`_J`, MA4=`_W`, MA5=`_OFF`.
 
 #### `LR name src exit_lux`
 ```
-→ ITO name   Move src → RA_SR_LUMEN
-  ITO name_J Voca SR_GLR Exit=RA_LINK
-  ITO name_W Move RA_SR_REL → exit_lux
+→ NOVA name   Move src → RA_SR_LUMEN
+  NOVA name_J Voca SR_GLR Exit=RA_LINK
+  NOVA name_W Move RA_SR_REL → exit_lux
 ```
 Read relation field of a lumen.
 
@@ -167,25 +167,25 @@ Treat output macros as non-functional until both bugs are fixed.
 
 #### `EMIT name arg`
 ```
-→ ITO name   Move arg → RA_TW_LUX
-  ITO name_R Voca EMIT_STR_ENTRY Exit=RA_LINK
-  ITO name_K Move C_0 → C_0
+→ NOVA name   Move arg → RA_TW_LUX
+  NOVA name_R Voca EMIT_STR_ENTRY Exit=RA_LINK
+  NOVA name_K Move C_0 → C_0
 ```
 Print packed string. Auto-suffix: MA2=`_R`, MA3=`_K`.
 
 #### `EMITI name arg`
 ```
-→ ITO name   Move arg → RA_TMP2
-  ITO name_R Voca EMIT_INT_ENTRY Exit=RA_LINK
-  ITO name_K Move C_0 → C_0
+→ NOVA name   Move arg → RA_TMP2
+  NOVA name_R Voca EMIT_INT_ENTRY Exit=RA_LINK
+  NOVA name_K Move C_0 → C_0
 ```
 Print integer.
 
 #### `PUTBYTE name arg`
 ```
-→ ITO name   Move arg → RA_BYTE
-  ITO name_R Voca PUT_BYTE Exit=RA_LINK
-  ITO name_K Move C_0 → C_0
+→ NOVA name   Move arg → RA_BYTE
+  NOVA name_R Voca PUT_BYTE Exit=RA_LINK
+  NOVA name_K Move C_0 → C_0
 ```
 Print one byte.
 
@@ -235,7 +235,7 @@ Reads indented body as template, expands for each element. `{X}` → element, `{
 ```
   ...body...
 ```
-Emits save-ITO before body and restore-ITO after.
+Emits save-NOVA before body and restore-NOVA after.
 
 ---
 
@@ -249,9 +249,9 @@ Emits save-ITO before body and restore-ITO after.
 | `SETREF name ref` | Set word(name) = addr(ref). |
 | `SET name integer` | Set word(name) = integer. |
 | `LINK src rel exit` | Add lumen `src --rel--> exit`. |
-| `ITO name op e1 e2 exit` | Allocate an ITO lux. |
+| `NOVA name op e1 e2 exit` | Allocate a NOVA lux. |
 | `BLOCK name count` | Allocate count raw luces. |
-| `NOLINK` | Reset auto-link (`_last_ito` = 0). |
+| `NOLINK` | Reset auto-link (`_last_nova` = 0). |
 
 ---
 
@@ -266,7 +266,7 @@ then sets `RA_MC_PREV = RA_MC_LUX`.
 
 **WIRE_AUTOLINK_RESET** — like WIRE_AUTOLINK, but calls AUTOLINK_RESET instead.
 
-**WRITE_ITO_SLOTS** — writes all 5 ITO slots (word, op, e1, e2, exit) from `RA_MC_LUX/OP/E1/E2/DEST`
+**WRITE_NOVA_SLOTS** — writes all 5 NOVA slots (word, op, e1, e2, exit) from `RA_MC_LUX/OP/E1/E2/DEST`
 into aether, then calls WIRE_AUTOLINK. Used by JEQ, JZ, LX, LH, WALK_ONE, LINK_OP to avoid
 repeating the 10-line slot-writing pattern. Uses `RA_MC_WIS_RL` as its own RA_LINK scratch
 so it is safe to call from any macro that already uses `RA_MC_TMP_RL`.
@@ -382,7 +382,7 @@ The loader sets these before calling each load-time macro.
 | Register | Description |
 |----------|-------------|
 | `RA_BS_RESULT` | Result of BS_INTERN / BS_LOOKUP (lux address or 0). |
-| `RA_BS_EL0` | First element addr (resolved by saku.re dispatch). |
+| `RA_BS_EL0` | First element addr (resolved by wax.re dispatch). |
 | `RA_BS_EL1` | Second element addr. |
 | `RA_BS_ELC` | Count of recognized elements (also used by SWITCH macro in macros.re). |
 
@@ -441,7 +441,7 @@ registers:
 |----------|-------------|
 | `RA_SR_LUX` | IN: lux address to traverse. |
 | `RA_SR_POS` | IN/OUT: current position (rel slot of a lumen pair). |
-| `RA_SR_OFFSET` | IN: offset to first lumen (1 for Data, ITO_SIZE for ITO). |
+| `RA_SR_OFFSET` | IN: offset to first lumen (1 for Data, NOVA_SIZE for NOVA). |
 | `RA_SR_REL` | IN (SR_WALK_ONE): relation to find / OUT (SR_GLR): relation found. |
 | `RA_SR_OUT` | OUT: exit lux address, or 0 if not found. |
 | `RA_SR_LUMEN` | Current lumen during WALK. |
@@ -457,10 +457,10 @@ Used inside load-time macro programs. Do not access directly from user code.
 | Register | Description |
 |----------|-------------|
 | `RA_MC_LUX` | Address of the lux currently being built. |
-| `RA_MC_PREV` | Address of previous lux (for AUTOLINK). Synced with `loader._last_ito`. |
+| `RA_MC_PREV` | Address of previous lux (for AUTOLINK). Synced with `loader._last_nova`. |
 | `RA_MC_SLOT` | `lux_addr + offset` when writing slots. |
 | `RA_MC_TMP_RL` | Saved RA_LINK before calling AUTOLINK. |
-| `RA_MC_WIS_RL` | Saved RA_LINK inside WRITE_ITO_SLOTS (separate from RA_MC_TMP_RL). |
+| `RA_MC_WIS_RL` | Saved RA_LINK inside WRITE_NOVA_SLOTS (separate from RA_MC_TMP_RL). |
 | `RA_MC_FLAG` | Address of flag lux (for JEQ/JZ). |
 | `RA_MC_J` / `RA_MC_K` | Scratch: second / third lux (`_J`, `_K` suffixes). |
 | `RA_MC_OP` / `RA_MC_E1` / `RA_MC_E2` / `RA_MC_DEST` | Scratch for WIRE_AUTOLINK. |

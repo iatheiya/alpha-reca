@@ -14,18 +14,18 @@ plus the `'for'` mode dispatch and `_close_ctx` case).
   field-value inspection of the frozen binary, not just "freeze() didn't
   crash").
 - **Real bug caught during first real-world conversion**: a `FOR` body
-  line with no `ITO <name>` prefix (e.g. bare `Add El1=... Exit=...`)
+  line with no `NOVA <name>` prefix (e.g. bare `Add El1=... Exit=...`)
   is not a recognized command anywhere in the rest of the pipeline (it's
-  an operation name, normally the *second* token after `ITO name`, never
+  an operation name, normally the *second* token after `NOVA name`, never
   the first token of a line) — it gets silently dropped with no error,
   producing no symbols at all for that line. This is exactly the failure
   mode the "leave `{Y}` literal instead of substituting empty" decision
   was meant to guard against, except this particular mistake was at the
-  *line* level (missing the `ITO` prefix entirely) rather than a missing
+  *line* level (missing the `NOVA` prefix entirely) rather than a missing
   placeholder value — caught by checking the frozen binary's symbol table
   directly after the first conversion attempt produced zero matching
   symbols, not by any error message. Every `FOR` body line that should
-  produce a real instruction needs its own `ITO <name>{N}`-style prefix,
+  produce a real instruction needs its own `NOVA <name>{N}`-style prefix,
   same as the pre-existing convention already used in `yaku.re`'s
   `EPL_SYS_{X}` example. Fixed in both the worked example above and the
   first real conversion (`parser.re`'s `PS_NOP_*` block, verified
@@ -42,7 +42,7 @@ breaks down whenever an iteration needs **more than one independent
 varying value** — confirmed empirically against a real, large-scale case
 in the codebase: the "compute field offset, write a value there" idiom
 (`Add El1=lux El2=OFFSET Exit=tmp` / `Write El1=tmp El2=VALUE`) appears
-**86 times** across `parser.re` (62) and `saku.re` (24), each occurrence
+**86 times** across `parser.re` (62) and `wax.re` (24), each occurrence
 needing two independent values (OFFSET and VALUE) per repetition — which
 the current `{X}`/`{N}`-only model cannot express without manual
 unrolling.
@@ -51,7 +51,7 @@ unrolling.
 
 ```
 FOR A0 A1 A2 A3 NR
-    ITO EPL_SYS_{X}   Move El1=SC_{X}_REF Exit=RA_TMP
+    NOVA EPL_SYS_{X}   Move El1=SC_{X}_REF Exit=RA_TMP
     RVOCA EPL_SYS_{X}R  PRELOAD_ARG
 ```
 - `FOR` takes a flat list of element tokens.
@@ -216,8 +216,8 @@ independent keys in the same `FOR` block today.)
 
 ```
 FOR C_1 SLOT_E1 SLOT_EXIT
-    ITO name_A{N} Add El1=PR_EL1 El2={X} Exit=RA_TMP
-    ITO name_W{N} Write El1=RA_TMP El2={Y}
+    NOVA name_A{N} Add El1=PR_EL1 El2={X} Exit=RA_TMP
+    NOVA name_W{N} Write El1=RA_TMP El2={Y}
         C_1 > Y=Move
         > Y=C_0
 ```
@@ -225,9 +225,9 @@ FOR C_1 SLOT_E1 SLOT_EXIT
 taken directly from the header list, no override needed for it). `{Y}`
 is the value to write: `C_1`'s iteration overrides it to `Move`; the
 default line (`> Y=C_0`) supplies `C_0` for everything else (`SLOT_E1`,
-`SLOT_EXIT`). Note the explicit `ITO name_A{N}`/`ITO name_W{N}` prefixes
+`SLOT_EXIT`). Note the explicit `NOVA name_A{N}`/`NOVA name_W{N}` prefixes
 with `{N}`-based uniqueness — a bare `Add .../Write ...` line with no
-`ITO <name>` prefix is not a recognized command anywhere in the
+`NOVA <name>` prefix is not a recognized command anywhere in the
 pipeline and is silently dropped with no error (caught during real
 implementation, see Implementation notes below).
 This is the exact shape needed to collapse the 86 manual instances into
@@ -317,10 +317,10 @@ estimate, both caught empirically rather than assumed:
    exactly** (e.g. `PS_MK_LOP_PATTERN`, `LOAD_CI_SKIP_ALLOC`) because
    external code calls into that exact name/address. `FOR` has no way to
    give one specific iteration a different name than the rest, so these
-   leading instructions were kept as plain `ITO` lines outside the `FOR`
+   leading instructions were kept as plain `NOVA` lines outside the `FOR`
    block, with only the remaining, internally-named iterations converted.
 
-**Real bugs caught during the conversion** (beyond the ITO-prefix one
+**Real bugs caught during the conversion** (beyond the NOVA-prefix one
 documented above):
 - A token-read (`RVOCA ... PS_NEXT_SYMBOL` or similar) that must happen
   *before* a value is available for an override (e.g. `PS_RCALL`'s SUB
@@ -332,14 +332,14 @@ documented above):
   suffix (e.g. a hand-written `LOAD_CL_W0` for an offset-0 special case,
   colliding with the `FOR`'s own generated `..._W0` for its first
   iteration). Added a standard verification step for all later
-  conversions: scan `_read_re_file`'s expanded output for duplicate `ITO`
+  conversions: scan `_read_re_file`'s expanded output for duplicate `NOVA`
   names before running `freeze()`, since a collision doesn't necessarily
   raise an error — the later definition can silently win, masking the
   bug exactly like the empty-substitution case this design already
   guards against elsewhere.
 
 **Unrelated finding, noted but not fixed**: the collision-detection scan
-also surfaced 3 *pre-existing* duplicate `ITO` names in `saku.re`'s
+also surfaced 3 *pre-existing* duplicate `NOVA` names in `wax.re`'s
 `LOAD_RKVA_*` area (`LOAD_RKVA_W0`, `LOAD_RKVA_INC0`, `LOAD_RKVA_J0`) —
 not caused by anything in this conversion, not yet investigated. Worth a
 look given this is the same general area as the still-open
